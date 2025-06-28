@@ -187,9 +187,9 @@ class _ScanScreenState extends State<ScanScreen> {
         for (int x = 0; x < IMG_WIDTH; x++) {
           var pixel = resizedImage.getPixel(x, y); // Gunakan getPixel
           // Hanya konversi ke double, jangan dibagi 255.0
-          buffer[pixelIndex++] = img.getRed(pixel).toDouble();
-          buffer[pixelIndex++] = img.getGreen(pixel).toDouble();
-          buffer[pixelIndex++] = img.getBlue(pixel).toDouble();
+          buffer[pixelIndex++] = pixel.r.toDouble(); // Red
+          buffer[pixelIndex++] = pixel.g.toDouble(); // Green
+          buffer[pixelIndex++] = pixel.b.toDouble(); // Blue
         }
       }
 
