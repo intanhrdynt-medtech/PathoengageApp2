@@ -52,6 +52,23 @@ class ApiService {
     return false;
   }
 
+  Future<bool> updateCompetencyEvidence(int id, String status, String evidenceUrl) async {
+    final token = await _getToken();
+    if (token == null) return false;
+
+    try {
+      final response = await http.put(
+        Uri.parse('$baseUrl/competencies/$id'),
+        headers: _buildHeaders(token),
+        body: jsonEncode({'status': status, 'evidence_url': evidenceUrl}),
+      );
+      return response.statusCode == 200;
+    } catch (e) {
+      debugPrint('Error updating competency evidence: $e');
+    }
+    return false;
+  }
+
   // --- EXAMS ---
   Future<List<dynamic>> getExams() async {
     final token = await _getToken();

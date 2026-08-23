@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:fp_pemrograman/colors.dart';
 import 'package:fp_pemrograman/service/api_service.dart';
+import 'package:file_picker/file_picker.dart';
 
 class LogbookScreen extends StatefulWidget {
   const LogbookScreen({super.key});
@@ -61,7 +62,7 @@ class _LogbookScreenState extends State<LogbookScreen> with SingleTickerProvider
   Color _getStatusColor(String? status) {
     switch (status) {
       case 'completed': return AppColors.successGreen;
-      case 'in_progress': return AppColors.warningOrange;
+      case 'pending_verification': return AppColors.warningOrange;
       default: return AppColors.textGrey;
     }
   }
@@ -69,31 +70,58 @@ class _LogbookScreenState extends State<LogbookScreen> with SingleTickerProvider
   String _getStatusLabel(String? status) {
     switch (status) {
       case 'completed': return 'Selesai';
-      case 'in_progress': return 'Sedang Berjalan';
-      default: return 'Belum Mulai';
+      case 'pending_verification': return 'Sedang Verifikasi';
+      default: return 'Upload Bukti';
     }
   }
 
   IconData _getStatusIcon(String? status) {
     switch (status) {
       case 'completed': return Icons.check_circle;
-      case 'in_progress': return Icons.timelapse;
-      default: return Icons.radio_button_unchecked;
+      case 'pending_verification': return Icons.hourglass_top;
+      default: return Icons.upload_file;
     }
   }
 
-  Future<void> _cycleStatus(Map<String, dynamic> item) async {
+  Future<void> _handleCompetencyTap(Map<String, dynamic> item) async {
     final currentStatus = item['status'] ?? 'not_started';
-    String nextStatus;
-    if (currentStatus == 'not_started') {
-      nextStatus = 'in_progress';
-    } else if (currentStatus == 'in_progress') {
-      nextStatus = 'completed';
-    } else {
-      nextStatus = 'not_started';
+    
+    if (currentStatus == 'completed') {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Kompetensi ini sudah diverifikasi selesai.')));
+      return;
     }
-    final success = await _api.updateCompetencyStatus(item['id'], nextStatus);
-    if (success) _loadCompetencies();
+    
+    if (currentStatus == 'pending_verification') {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Menunggu verifikasi admin.')));
+      return;
+    }
+
+    // not_started -> show file picker
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['pdf', 'jpg', 'jpeg', 'png'],
+      );
+
+      if (result != null && result.files.isNotEmpty) {
+        final file = result.files.first;
+        final mockUrl = 'https://storage.pathoengage.com/evidence/${file.name}';
+        
+        // Show loading
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Mengunggah bukti...')));
+        
+        // Call API to update status & URL
+        final success = await _api.updateCompetencyEvidence(item['id'], 'pending_verification', mockUrl);
+        if (success) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Bukti berhasil diunggah. Menunggu verifikasi admin.')));
+          _loadCompetencies();
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Gagal mengunggah bukti.')));
+        }
+      }
+    } catch (e) {
+      debugPrint("File picker error: $e");
+    }
   }
 
   @override
@@ -215,7 +243,7 @@ class _LogbookScreenState extends State<LogbookScreen> with SingleTickerProvider
         subtitle: Text(item['organ_system'] ?? '',
             style: TextStyle(fontFamily: 'Poppins', fontSize: 11, color: AppColors.textGrey)),
         trailing: GestureDetector(
-          onTap: () => _cycleStatus(item),
+          onTap: () => _handleCompetencyTap(item),
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
             decoration: BoxDecoration(
