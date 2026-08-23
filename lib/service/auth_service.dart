@@ -1,77 +1,100 @@
-import 'package:firebase_auth/firebase_auth.dart';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
+import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class AuthService {
-  final FirebaseAuth _firebaseAuth = FirebaseAuth.instance;
-
-  // ... (signIn and register methods remain the same) ...
-  Future<User?> signInWithEmailAndPassword(String email, String password) async {
-    try {
-      UserCredential result = await _firebaseAuth.signInWithEmailAndPassword(
-        email: email,
-        password: password,
-      );
-      return result.user;
-    } on FirebaseAuthException catch (e) {
-      print(e.message);
-      return null;
-    }
+  // Use Vercel URL
+  final String baseUrl = 'https://pathoengage-backend.vercel.app'; 
+  
+  Future<String?> getToken() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString('jwt_token');
   }
 
-  Future<User?> registerWithEmailAndPassword(String fullName, String email, String password) async {
+  Future<Map<String, dynamic>?> getCurrentUser() async {
+    final token = await getToken();
+    if (token == null) return null;
+
     try {
-      UserCredential result = await _firebaseAuth.createUserWithEmailAndPassword(
-        email: email,
-        password: password,
+      final response = await http.get(
+        Uri.parse('$baseUrl/me'),
+        headers: {'Authorization': 'Bearer $token'},
       );
-      User? user = result.user;
-      
-      if (user != null) {
-        await user.updateDisplayName(fullName);
-        await user.reload();
-        user = _firebaseAuth.currentUser;
+
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
       }
-      
-      return user;
-    } on FirebaseAuthException catch (e) {
-      print(e.message);
-      return null;
+    } catch (e) {
+      debugPrint('Error fetching user: $e');
     }
+    return null;
   }
 
-  // NEW METHOD for changing password
-  Future<String> changePassword({
-    required String currentPassword,
-    required String newPassword,
-  }) async {
+  Future<Map<String, dynamic>?> signInWithEmailAndPassword(
+      String email, String password) async {
     try {
-      final user = _firebaseAuth.currentUser;
-      if (user == null) {
-        return "No user is signed in.";
-      }
-
-      // Re-authenticate user
-      final cred = EmailAuthProvider.credential(
-        email: user.email!,
-        password: currentPassword,
+      final response = await http.post(
+        Uri.parse('$baseUrl/login'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'email': email, 'password': password}),
       );
-      
-      await user.reauthenticateWithCredential(cred);
 
-      // If re-authentication is successful, update the password
-      await user.updatePassword(newPassword);
+      final data = jsonDecode(response.body);
 
-      return "Password updated successfully.";
-    } on FirebaseAuthException catch (e) {
-      // Handle errors
-      if (e.code == 'wrong-password') {
-        return 'The current password you entered is incorrect.';
+      if (response.statusCode == 200) {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('jwt_token', data['token']);
+        return data['user'];
       } else {
-        return 'An error occurred. Please try again.';
+        debugPrint(data['error']);
+        return null;
       }
+    } catch (e) {
+      debugPrint('Login Error: $e');
+      return null;
+    }
+  }
+
+  Future<Map<String, dynamic>> registerWithEmailAndPassword(
+      String fullName, String nim, String email, String password) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/register'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'email': email, 
+          'password': password,
+          'full_name': fullName,
+          'nim': nim
+        }),
+      );
+
+      final data = jsonDecode(response.body);
+
+      if (response.statusCode == 200) {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('jwt_token', data['token']);
+        return {'success': true, 'user': data['user'], 'message': 'Registration successful'};
+      } else {
+        return {
+          'success': false,
+          'user': null,
+          'message': data['error'] ?? 'Registration failed',
+        };
+      }
+    } catch (e) {
+      debugPrint('Registration Error: $e');
+      return {
+        'success': false,
+        'user': null,
+        'message': 'An unexpected error occurred. Please try again.',
+      };
     }
   }
 
   Future<void> signOut() async {
-    await _firebaseAuth.signOut();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('jwt_token');
   }
 }

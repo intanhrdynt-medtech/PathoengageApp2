@@ -1,1 +1,25 @@
-{"flutter":{"platforms":{"android":{"default":{"projectId":"dermai-b819e","appId":"1:1033832187751:android:ea9a3facf931fe25a411c2","fileOutput":"android/app/google-services.json"}},"dart":{"lib/firebase_options.dart":{"projectId":"dermai-b819e","configurations":{"android":"1:1033832187751:android:ea9a3facf931fe25a411c2","ios":"1:1033832187751:ios:0525fafb3d5b72c2a411c2","macos":"1:1033832187751:ios:0525fafb3d5b72c2a411c2","web":"1:1033832187751:web:0424f65c668d39caa411c2","windows":"1:1033832187751:web:04ce56de856ec870a411c2"}}}}}}
+{
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "eyexaminer-87a16",
+          "appId": "1:117767841025:android:262acc33fb07a56aea6700",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "eyexaminer-87a16",
+          "configurations": {
+            "android": "1:117767841025:android:262acc33fb07a56aea6700",
+            "ios": "1:117767841025:ios:2cfb12b2c8d633a2ea6700",
+            "macos": "1:117767841025:ios:2cfb12b2c8d633a2ea6700",
+            "web": "1:117767841025:web:d4624ea84a6a8515ea6700",
+            "windows": "1:117767841025:web:d23315103123ec3dea6700"
+          }
+        }
+      }
+    }
+  }
+}

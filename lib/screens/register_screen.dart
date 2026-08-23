@@ -1,27 +1,31 @@
 import 'package:flutter/material.dart';
-import 'package:fp_pemrograman/service/auth_service.dart';
 import 'package:fp_pemrograman/colors.dart';
-import 'package:google_fonts/google_fonts.dart';
+import 'package:fp_pemrograman/service/auth_service.dart';
+
 import 'dart:math';
+import 'login_screen.dart'; // pastikan file login_screen.dart ada
 
 class RegisterScreen extends StatefulWidget {
+  const RegisterScreen({super.key});
+
   @override
-  _RegisterScreenState createState() => _RegisterScreenState();
+  RegisterScreenState createState() => RegisterScreenState();
 }
 
-class _RegisterScreenState extends State<RegisterScreen> {
+class RegisterScreenState extends State<RegisterScreen> {
   final AuthService _auth = AuthService();
   final _formKey = GlobalKey<FormState>();
   String fullName = '';
+  String nim = '';
   String email = '';
   String password = '';
   String confirmPassword = '';
   String error = '';
   bool _isLoading = false;
-  bool _isPasswordObscure = true; // State for password visibility
-  bool _isConfirmPasswordObscure = true; // State for confirm password visibility
+  bool _isPasswordObscure = true;
+  bool _isConfirmPasswordObscure = true;
 
- void _tryRegister() async {
+  void _tryRegister() async {
     if (_formKey.currentState!.validate()) {
       if (password != confirmPassword) {
         setState(() {
@@ -33,21 +37,26 @@ class _RegisterScreenState extends State<RegisterScreen> {
         _isLoading = true;
         error = '';
       });
-      
-      // Call the real AuthService method
-      dynamic result = await _auth.registerWithEmailAndPassword(fullName, email, password);
 
-      if (result == null) {
+      // Call register with 4 parameters: fullName, nim, email, password
+      dynamic result =
+          await _auth.registerWithEmailAndPassword(fullName, nim, email, password);
+
+      if (!mounted) return;
+
+      if (result is Map && result['success'] == true) {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (context) => LoginScreen()),
+        );
+      } else {
         setState(() {
-          error = 'Failed to register. Please use a valid email.';
+          error = result is Map ? result['message'] ?? 'Failed to register' : 'Failed to register';
           _isLoading = false;
         });
-      } else {
-        // Go back to login screen after successful registration
-        Navigator.pop(context); 
       }
     }
-}
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -69,7 +78,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
         backgroundColor: Colors.transparent,
         elevation: 0,
         leading: IconButton(
-          icon: Icon(Icons.arrow_back_ios, color: Colors.white, size: scaleW(80)),
+          icon:
+              Icon(Icons.arrow_back_ios, color: Colors.white, size: scaleW(80)),
           onPressed: () => Navigator.pop(context),
         ),
       ),
@@ -77,15 +87,19 @@ class _RegisterScreenState extends State<RegisterScreen> {
           ? Center(child: CircularProgressIndicator())
           : Stack(
               children: [
+                // Background gradient (sama kayak login)
                 Container(
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
                       begin: Alignment.topCenter,
                       end: Alignment.bottomCenter,
                       colors: [
-                        AppColors.backgroundLighter,
-                        AppColors.accentBrown,
+                        AppColors.secondaryPink, // biru cerah
+                        AppColors.secondaryMagenta, // biru medium
+                        AppColors.darkMagenta, // biru tua
+                        AppColors.primaryDark, // navy
                       ],
+                      stops: [0.0, 0.3, 0.7, 1.0],
                     ),
                   ),
                 ),
@@ -93,9 +107,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   bottom: 0,
                   child: Container(
                     width: screenWidth,
-                    height: screenHeight * 0.8,
+                    height: screenHeight * 0.93,
                     decoration: BoxDecoration(
-                      color: AppColors.backgroundLightest,
+                      color: Colors.white,
                       borderRadius: BorderRadius.only(
                         topLeft: Radius.circular(scaleW(120)),
                         topRight: Radius.circular(scaleW(120)),
@@ -111,14 +125,14 @@ class _RegisterScreenState extends State<RegisterScreen> {
                         SizedBox(height: scaleH(220)),
                         Text(
                           'Register',
-                          style: GoogleFonts.poppins(
+                          style: TextStyle(fontFamily: 'Poppins', 
                             fontSize: scaleFont(120),
                             fontWeight: FontWeight.bold,
-                            color: AppColors.primaryOrange,
+                            color: AppColors.accentRed, // merah tua
                             shadows: [
                               Shadow(
                                 blurRadius: 4.0,
-                                color: Colors.black.withOpacity(0.25),
+                                color: Colors.black.withValues(alpha: 0.25),
                                 offset: Offset(0, 4),
                               ),
                             ],
@@ -127,7 +141,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
                         SizedBox(height: scaleH(120)),
                         Container(
                           width: screenWidth,
-                          padding: EdgeInsets.symmetric(horizontal: scaleW(100)),
+                          padding:
+                              EdgeInsets.symmetric(horizontal: scaleW(100)),
                           child: Form(
                             key: _formKey,
                             child: Column(
@@ -137,7 +152,18 @@ class _RegisterScreenState extends State<RegisterScreen> {
                                   hint: 'Full Name',
                                   icon: Icons.person_outline,
                                   onChanged: (val) => fullName = val,
-                                  validator: (val) => val!.isEmpty ? 'Enter your full name' : null,
+                                  validator: (val) => val!.isEmpty
+                                      ? 'Enter your full name'
+                                      : null,
+                                ),
+                                _buildTextFieldWithIcon(
+                                  context: context,
+                                  hint: 'NIM',
+                                  icon: Icons.badge_outlined,
+                                  onChanged: (val) => nim = val,
+                                  validator: (val) => val!.isEmpty
+                                      ? 'Enter your NIM'
+                                      : null,
                                 ),
                                 SizedBox(height: scaleH(50)),
                                 _buildTextFieldWithIcon(
@@ -145,7 +171,17 @@ class _RegisterScreenState extends State<RegisterScreen> {
                                   hint: 'Enter your email',
                                   icon: Icons.email_outlined,
                                   onChanged: (val) => email = val,
-                                  validator: (val) => val!.isEmpty ? 'Please enter an email' : null,
+                                  validator: (val) {
+                                    if (val == null || val.isEmpty) {
+                                      return 'Please enter an email';
+                                    }
+                                    // Simple email regex validation
+                                    const emailPattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$';
+                                    if (!RegExp(emailPattern).hasMatch(val)) {
+                                      return 'Please enter a valid email';
+                                    }
+                                    return null;
+                                  },
                                   keyboardType: TextInputType.emailAddress,
                                 ),
                                 SizedBox(height: scaleH(50)),
@@ -155,15 +191,20 @@ class _RegisterScreenState extends State<RegisterScreen> {
                                   icon: Icons.lock_outline,
                                   obscureText: _isPasswordObscure,
                                   onChanged: (val) => password = val,
-                                  validator: (val) => val!.length < 6 ? 'Password must be 6+ characters' : null,
+                                  validator: (val) => val!.length < 6
+                                      ? 'Password must be 6+ characters'
+                                      : null,
                                   suffixIcon: IconButton(
                                     icon: Icon(
-                                      _isPasswordObscure ? Icons.visibility_off : Icons.visibility,
-                                      color: AppColors.primaryOrange,
+                                      _isPasswordObscure
+                                          ? Icons.visibility_off
+                                          : Icons.visibility,
+                                      color: AppColors.accentRed,
                                     ),
                                     onPressed: () {
                                       setState(() {
-                                        _isPasswordObscure = !_isPasswordObscure;
+                                        _isPasswordObscure =
+                                            !_isPasswordObscure;
                                       });
                                     },
                                   ),
@@ -175,15 +216,20 @@ class _RegisterScreenState extends State<RegisterScreen> {
                                   icon: Icons.lock_outline,
                                   obscureText: _isConfirmPasswordObscure,
                                   onChanged: (val) => confirmPassword = val,
-                                  validator: (val) => val!.isEmpty ? 'Confirm your password' : null,
+                                  validator: (val) => val!.isEmpty
+                                      ? 'Confirm your password'
+                                      : null,
                                   suffixIcon: IconButton(
                                     icon: Icon(
-                                      _isConfirmPasswordObscure ? Icons.visibility_off : Icons.visibility,
-                                      color: AppColors.primaryOrange,
+                                      _isConfirmPasswordObscure
+                                          ? Icons.visibility_off
+                                          : Icons.visibility,
+                                      color: AppColors.accentRed,
                                     ),
                                     onPressed: () {
                                       setState(() {
-                                        _isConfirmPasswordObscure = !_isConfirmPasswordObscure;
+                                        _isConfirmPasswordObscure =
+                                            !_isConfirmPasswordObscure;
                                       });
                                     },
                                   ),
@@ -196,7 +242,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
                                   SizedBox(height: scaleH(20)),
                                   Text(
                                     error,
-                                    style: TextStyle(color: AppColors.primaryOrange, fontSize: scaleFont(30)),
+                                    style: TextStyle(
+                                        color: AppColors.accentRed,
+                                        fontSize: scaleFont(30)),
                                     textAlign: TextAlign.center,
                                   ),
                                 ],
@@ -223,19 +271,23 @@ class _RegisterScreenState extends State<RegisterScreen> {
     TextInputType keyboardType = TextInputType.text,
     Widget? suffixIcon,
   }) {
-    double scaleFont(double val) => val * min(MediaQuery.of(context).size.width / 1080.0, MediaQuery.of(context).size.height / 1920.0);
-    
+    double scaleFont(double val) =>
+        val *
+        min(MediaQuery.of(context).size.width / 1080.0,
+            MediaQuery.of(context).size.height / 1920.0);
+
     return TextFormField(
       onChanged: onChanged,
       validator: validator,
       obscureText: obscureText,
       keyboardType: keyboardType,
-      style: GoogleFonts.poppins(fontSize: scaleFont(40), color: Colors.black),
+      style: TextStyle(fontFamily: 'Poppins', fontSize: scaleFont(40), color: Colors.black),
       decoration: InputDecoration(
-        prefixIcon: Icon(icon, color: AppColors.primaryOrange),
+        prefixIcon: Icon(icon, color: AppColors.accentRed),
         suffixIcon: suffixIcon,
         hintText: hint,
-        hintStyle: GoogleFonts.poppins(fontSize: scaleFont(40), color: Colors.grey),
+        hintStyle:
+            TextStyle(fontFamily: 'Poppins', fontSize: scaleFont(40), color: Colors.grey),
         filled: true,
         fillColor: Colors.grey[200],
         border: OutlineInputBorder(
@@ -247,25 +299,29 @@ class _RegisterScreenState extends State<RegisterScreen> {
     );
   }
 
-   Widget _buildRegisterButton(BuildContext context) {
-    double scaleH(double val) => val * MediaQuery.of(context).size.height / 1920.0;
-    double scaleFont(double val) => val * min(MediaQuery.of(context).size.width / 1080.0, MediaQuery.of(context).size.height / 1920.0);
-    
+  Widget _buildRegisterButton(BuildContext context) {
+    double scaleH(double val) =>
+        val * MediaQuery.of(context).size.height / 1920.0;
+    double scaleFont(double val) =>
+        val *
+        min(MediaQuery.of(context).size.width / 1080.0,
+            MediaQuery.of(context).size.height / 1920.0);
+
     return GestureDetector(
       onTap: _tryRegister,
       child: Container(
         width: double.infinity,
         height: scaleH(160),
         decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: [AppColors.secondaryTeal, AppColors.darkTeal],
+          gradient: const LinearGradient(
+            colors: [AppColors.primaryPurple, AppColors.accentRed],
             begin: Alignment.centerLeft,
             end: Alignment.centerRight,
           ),
           borderRadius: BorderRadius.circular(30.0),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.15),
+              color: Colors.black.withValues(alpha: 0.15),
               spreadRadius: 1,
               blurRadius: 10,
               offset: Offset(0, 5),
@@ -275,10 +331,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
         child: Center(
           child: Text(
             'Register',
-            style: GoogleFonts.poppins(
+            style: TextStyle(fontFamily: 'Poppins', 
               fontSize: scaleFont(50),
               fontWeight: FontWeight.bold,
-              color: AppColors.backgroundLightest,
+              color: Colors.white,
             ),
           ),
         ),
@@ -287,28 +343,34 @@ class _RegisterScreenState extends State<RegisterScreen> {
   }
 
   Widget _buildLoginLink(BuildContext context) {
-    double scaleFont(double val) => val * min(MediaQuery.of(context).size.width / 1080.0, MediaQuery.of(context).size.height / 1920.0);
-    
+    double scaleFont(double val) =>
+        val *
+        min(MediaQuery.of(context).size.width / 1080.0,
+            MediaQuery.of(context).size.height / 1920.0);
+
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
         Text(
           "Already have an account?",
-          style: GoogleFonts.poppins(
+          style: TextStyle(fontFamily: 'Poppins', 
             fontSize: scaleFont(40),
             color: Colors.black54,
           ),
         ),
         TextButton(
           onPressed: () {
-            Navigator.pop(context);
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(builder: (context) => LoginScreen()),
+            );
           },
           child: Text(
             'Login',
-            style: GoogleFonts.poppins(
+            style: TextStyle(fontFamily: 'Poppins', 
               fontSize: scaleFont(40),
               fontWeight: FontWeight.bold,
-              color: AppColors.primaryOrange,
+              color: AppColors.accentRed,
             ),
           ),
         ),

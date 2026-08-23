@@ -1,23 +1,35 @@
 import 'package:flutter/material.dart';
 
 class AppColors {
-  // Light to Dark Warm/Neutral Tones (based on the first set of hex codes)
-  static const Color backgroundLightest = Color(0xFFFFF7E8); // Very light, almost white
-  static const Color backgroundLighter = Color(0xFFF9EADA);  // Light background/accent
-  static const Color lightBrownish = Color(0xFFEDD0BB);     // Slightly more saturated light tone
-  static const Color mediumBrownish = Color(0xFFDCAC93);    // Medium tone, maybe for accents
-  static const Color accentBrown = Color(0xFFC47D5F);      // Stronger accent brown
-  static const Color primaryOrange = Color(0xFFB7603C);    // Your main primary orange/brown color
-
-  // Teal/Dark Greenish Tones (based on the second set of hex codes)
-  static const Color secondaryTeal = Color(0xFF597879);     // A muted teal/grey-green
-  static const Color darkTeal = Color(0xFF224B4C);
-
-  static var inputFill;
-
-  static var primary;         // Very dark teal/green, possibly for text or deep accents
-
-  // Add more specific names if you know their purpose (e.g., 'textColorPrimary', 'buttonColorSecondary')
-  // static const Color buttonPrimary = Color(0xFFB7603C);
-  // static const Color headlineColor = Color(0xFF224B4C);
+  // Pathology Anatomy Color Palette (Tissue & Histology Inspired)
+  
+  // Primary Colors - Deep purples representing tissue
+  static const Color primaryPurple = Color(0xFF5C2E57); // Deep tissue purple
+  static const Color primaryDark = Color(0xFF3D1E3E); // Very dark purple/plum
+  static const Color primaryLight = Color(0xFF9B5B9F); // Lighter purple
+  
+  // Secondary Colors - Magentas & Pinks for contrast (representing stained tissue)
+  static const Color secondaryMagenta = Color(0xFFB84C6B); // Magenta-pink (histology stain)
+  static const Color secondaryPink = Color(0xFFD97CA6); // Light pink (lighter stain)
+  static const Color darkMagenta = Color(0xFF8B3A5C); // Dark magenta
+  
+  // Accent Colors - Reds/Magentas for highlights (blood, staining)
+  static const Color accentRed = Color(0xFFE85B6F); // Bright magenta-red (blood vessels)
+  static const Color accentDarkRed = Color(0xFF92324A); // Darker red
+  
+  // Background Colors - Light lavenders and purples
+  static const Color backgroundLightest = Color(0xFFF5F0F8); // Very light lavender
+  static const Color backgroundLighter = Color(0xFFEDE6F3); // Light purple-grey
+  static const Color lightPurpleAccent = Color(0xFFE2D4EA); // Soft purple accent
+  
+  // Text & Neutral Colors
+  static const Color textDark = Color(0xFF2D1B3D); // Very dark purple-black
+  static const Color textGrey = Color(0xFF6B5B7F); // Medium grey-purple
+  
+  // Status Colors
+  static const Color successGreen = Color(0xFF27AE60); // For success states
+  static const Color warningOrange = Color(0xFFE67E22); // For warnings
+  
+  static Color? inputFill;
+  static Color? primary;
 }

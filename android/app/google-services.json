@@ -1,13 +1,13 @@
 {
   "project_info": {
-    "project_number": "1033832187751",
-    "project_id": "dermai-b819e",
-    "storage_bucket": "dermai-b819e.firebasestorage.app"
+    "project_number": "117767841025",
+    "project_id": "eyexaminer-87a16",
+    "storage_bucket": "eyexaminer-87a16.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:1033832187751:android:ea9a3facf931fe25a411c2",
+        "mobilesdk_app_id": "1:117767841025:android:262acc33fb07a56aea6700",
         "android_client_info": {
           "package_name": "com.example.fp_pemrograman"
         }
@@ -15,26 +15,7 @@
       "oauth_client": [],
       "api_key": [
         {
-          "current_key": "AIzaSyA1MlPwMx0k_OqQzmuWCVDIfM-mWoOq1cc"
-        }
-      ],
-      "services": {
-        "appinvite_service": {
-          "other_platform_oauth_client": []
-        }
-      }
-    },
-    {
-      "client_info": {
-        "mobilesdk_app_id": "1:1033832187751:android:5934c96b1515309da411c2",
-        "android_client_info": {
-          "package_name": "com.kelompok9.dermai"
-        }
-      },
-      "oauth_client": [],
-      "api_key": [
-        {
-          "current_key": "AIzaSyA1MlPwMx0k_OqQzmuWCVDIfM-mWoOq1cc"
+          "current_key": "AIzaSyAAZeC4yIeMjyJ9gmJdPchMt7D3BLt1ZoI"
         }
       ],
       "services": {

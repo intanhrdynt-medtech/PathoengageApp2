@@ -1,7 +1,5 @@
-eczema_areola
-eczema_asteatotic
-eczema_chronic
-eczema_fingertips
-eczema_foot
-eczema_hand
-not_eczema
+mild
+moderate
+no dr
+proliferatif dr
+severe

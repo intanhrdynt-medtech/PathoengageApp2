@@ -1,21 +1,9 @@
-// lib/main.dart
-
 import 'package:flutter/material.dart';
-import 'package:firebase_core/firebase_core.dart';
 import 'package:fp_pemrograman/screens/starting_page.dart';
-import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart'; // Import Mapbox
-import 'firebase_options.dart';
+import 'package:fp_pemrograman/colors.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  
-  // Atur Access Token Mapbox di sini
-  MapboxOptions.setAccessToken("YOUR_MAPBOX_ACCESS_TOKEN");
-
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
-  
   runApp(const MyApp());
 }
 
@@ -25,13 +13,76 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'DermAI',
-      theme: ThemeData(
-        primarySwatch: Colors.blue,
-        visualDensity: VisualDensity.adaptivePlatformDensity,
-      ),
-      home: StartingPage(),
+      title: 'PathoEngage - PPDS PA UNAIR',
       debugShowCheckedModeBanner: false,
+      theme: ThemeData(
+        useMaterial3: true,
+        fontFamily: 'Poppins',
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: AppColors.primaryPurple,
+          primary: AppColors.primaryPurple,
+          secondary: AppColors.secondaryMagenta,
+          tertiary: AppColors.accentRed,
+          surface: AppColors.backgroundLightest,
+          brightness: Brightness.light,
+        ),
+        scaffoldBackgroundColor: AppColors.backgroundLightest,
+        visualDensity: VisualDensity.adaptivePlatformDensity,
+        appBarTheme: const AppBarTheme(
+          backgroundColor: AppColors.primaryPurple,
+          foregroundColor: Colors.white,
+          elevation: 0,
+        ),
+        cardTheme: CardThemeData(
+          elevation: 0,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          color: Colors.white,
+        ),
+        elevatedButtonTheme: ElevatedButtonThemeData(
+          style: ElevatedButton.styleFrom(
+            backgroundColor: AppColors.primaryPurple,
+            foregroundColor: Colors.white,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+            padding: const EdgeInsets.symmetric(vertical: 14),
+          ),
+        ),
+        inputDecorationTheme: InputDecorationTheme(
+          filled: true,
+          fillColor: Colors.grey[100],
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide.none,
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: const BorderSide(color: AppColors.accentRed, width: 2),
+          ),
+        ),
+        textButtonTheme: TextButtonThemeData(
+          style: TextButton.styleFrom(foregroundColor: AppColors.primaryPurple),
+        ),
+        floatingActionButtonTheme: const FloatingActionButtonThemeData(
+          backgroundColor: AppColors.primaryPurple,
+          foregroundColor: Colors.white,
+        ),
+        navigationBarTheme: NavigationBarThemeData(
+          backgroundColor: Colors.white,
+          indicatorColor: AppColors.primaryPurple.withOpacity(0.15),
+          labelTextStyle: WidgetStateProperty.resolveWith((states) {
+            if (states.contains(WidgetState.selected)) {
+              return const TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold, fontSize: 11, color: AppColors.primaryPurple);
+            }
+            return TextStyle(fontFamily: 'Poppins', fontSize: 11, color: AppColors.textGrey);
+          }),
+          iconTheme: WidgetStateProperty.resolveWith((states) {
+            if (states.contains(WidgetState.selected)) {
+              return const IconThemeData(color: AppColors.primaryPurple);
+            }
+            return IconThemeData(color: AppColors.textGrey);
+          }),
+        ),
+      ),
+      home: const StartingPage(),
     );
   }
 }

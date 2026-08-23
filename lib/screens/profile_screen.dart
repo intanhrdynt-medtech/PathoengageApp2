@@ -1,238 +1,239 @@
-// lib/screens/profile_screen.dart
-
-import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:firebase_storage/firebase_storage.dart';
-import 'package:google_fonts/google_fonts.dart';
-import 'package:image_picker/image_picker.dart';
-import 'package:fp_pemrograman/screens/change_password_screen.dart';
-import 'package:fp_pemrograman/screens/login_screen.dart';
+import 'package:fp_pemrograman/colors.dart';
 import 'package:fp_pemrograman/service/auth_service.dart';
+import 'package:fp_pemrograman/screens/login_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
-
   @override
   State<ProfileScreen> createState() => _ProfileScreenState();
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
-  final User? _currentUser = FirebaseAuth.instance.currentUser;
-  final AuthService _authService = AuthService();
-  File? _imageFile;
-  String? _profileImageUrl;
-  bool _isLoading = false;
+  final AuthService _auth = AuthService();
+  Map<String, dynamic>? _user;
+  bool _isLoading = true;
 
   @override
   void initState() {
     super.initState();
-    _profileImageUrl = _currentUser?.photoURL;
+    _loadUser();
   }
 
-  Future<void> _pickImage() async {
-    final pickedFile = await ImagePicker().pickImage(source: ImageSource.gallery, imageQuality: 70);
-    if (pickedFile != null) {
-      setState(() {
-        _imageFile = File(pickedFile.path);
-      });
-      _uploadProfilePicture();
-    }
+  void _loadUser() async {
+    final user = await _auth.getCurrentUser();
+    setState(() {
+      _user = user;
+      _isLoading = false;
+    });
   }
 
-  Future<void> _uploadProfilePicture() async {
-    if (_imageFile == null || _currentUser == null) return;
-    setState(() => _isLoading = true);
-    try {
-      final storageRef = FirebaseStorage.instance
-          .ref()
-          .child('profile_pictures')
-          .child('${_currentUser.uid}.jpg');
-      await storageRef.putFile(_imageFile!);
-      final downloadURL = await storageRef.getDownloadURL();
-      await _currentUser.updatePhotoURL(downloadURL);
-      await _currentUser.reload();
-      if (mounted) {
-        setState(() => _profileImageUrl = downloadURL);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Profile picture updated successfully!')),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to upload image: $e')),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
-    }
-  }
+  Future<void> _logout() async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('Konfirmasi Logout', style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold)),
+        content: const Text('Apakah Anda yakin ingin keluar?', style: TextStyle(fontFamily: 'Poppins')),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Batal')),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.accentRed),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Logout', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
 
-  Future<void> _handleLogout() async {
-    await _authService.signOut();
-    if (mounted) {
-      Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(builder: (context) => LoginScreen()),
-        (Route<dynamic> route) => false,
+    if (confirm == true) {
+      await _auth.signOut();
+      if (!mounted) return;
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(builder: (_) => const LoginScreen()),
+        (route) => false,
       );
+    }
+  }
+
+  Color _getPhaseColor(String? phase) {
+    switch (phase?.toLowerCase()) {
+      case 'red': return Colors.red.shade600;
+      case 'yellow': return Colors.orange.shade600;
+      case 'green': return Colors.green.shade600;
+      default: return Colors.blueGrey;
+    }
+  }
+
+  String _getPhaseLabel(String? phase) {
+    switch (phase?.toLowerCase()) {
+      case 'mkdu': return 'MKDU';
+      case 'red': return 'Tahap Merah';
+      case 'yellow': return 'Tahap Kuning';
+      case 'green': return 'Tahap Hijau';
+      default: return 'Tidak Diketahui';
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    // --- PERBAIKAN WARNA ---
-    const Color bgColorTop = Color(0xFFFFF7E8);
-    const Color bgColorBottom = Color(0xFFDCAC93);
-    const Color fullNameColor = Color(0xFFB7603C);
-    const Color emailColor = Color(0xFF224B4C);
-    const Color optionsBoxColor = Color(0xFFF9EADA);
-    const Color iconColor = Color(0xFFB7603C);
-
-    return Container(
-      // --- PERBAIKAN 1: GRADIENT BACKGROUND ---
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          colors: [bgColorTop, bgColorBottom],
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-        ),
+    return Scaffold(
+      backgroundColor: AppColors.backgroundLightest,
+      appBar: AppBar(
+        title: const Text('Profil Saya', style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold)),
+        backgroundColor: AppColors.primaryPurple,
+        foregroundColor: Colors.white,
+        elevation: 0,
       ),
-      child: Scaffold(
-        backgroundColor: Colors.transparent,
-        appBar: AppBar(
-          title: Text('Profile', style: GoogleFonts.poppins(fontWeight: FontWeight.bold, color: emailColor)),
-          centerTitle: true,
-          leading: IconButton(
-            icon: const Icon(Icons.arrow_back_ios, color: emailColor),
-            onPressed: () => Navigator.of(context).pop(),
-          ),
-          backgroundColor: Colors.transparent,
-          elevation: 0,
-        ),
-        // --- PERBAIKAN 2: LAYOUT TURUN & POSISI TEKS DI TENGAH ---
-        body: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 24.0),
-          child: SizedBox(
-            width: double.infinity, // Memastikan Column bisa melebarkan diri
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.center, // Memusatkan semua anak secara horizontal
-              children: [
-                const SizedBox(height: 20),
-                SizedBox(
-                  height: 120,
-                  width: 120,
-                  child: Stack(
-                    fit: StackFit.expand,
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : _user == null
+              ? const Center(child: Text('Gagal memuat data profil'))
+              : SingleChildScrollView(
+                  child: Column(
                     children: [
-                      CircleAvatar(
-                        backgroundColor: Colors.grey.shade300,
-                        backgroundImage: _profileImageUrl != null
-                            ? NetworkImage(_profileImageUrl!)
-                            : null,
-                        child: _isLoading
-                            ? const CircularProgressIndicator(color: Colors.white)
-                            : _profileImageUrl == null
-                                ? Icon(Icons.person, size: 60, color: Colors.grey.shade400)
-                                : null,
-                      ),
-                      Positioned(
-                        bottom: 0,
-                        right: 0,
-                        child: GestureDetector(
-                          onTap: _pickImage,
-                          child: Container(
-                            padding: const EdgeInsets.all(8),
-                            decoration: const BoxDecoration(
-                              color: iconColor,
-                              shape: BoxShape.circle,
+                      // Header gradient card
+                      Container(
+                        width: double.infinity,
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: [AppColors.primaryPurple, AppColors.darkMagenta],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          ),
+                        ),
+                        padding: const EdgeInsets.fromLTRB(24, 24, 24, 40),
+                        child: Column(
+                          children: [
+                            // Avatar
+                            Container(
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                border: Border.all(color: Colors.white, width: 3),
+                                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 12)],
+                              ),
+                              child: CircleAvatar(
+                                radius: 45,
+                                backgroundColor: AppColors.accentRed,
+                                child: Text(
+                                  (_user?['full_name'] ?? 'P').substring(0, 1).toUpperCase(),
+                                  style: const TextStyle(fontSize: 36, fontWeight: FontWeight.bold, color: Colors.white),
+                                ),
+                              ),
                             ),
-                            child: const Icon(Icons.edit, color: Colors.white, size: 20),
+                            const SizedBox(height: 14),
+                            Text(_user?['full_name'] ?? '-',
+                                style: const TextStyle(
+                                    fontFamily: 'Poppins',
+                                    fontSize: 20,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.white)),
+                            const SizedBox(height: 4),
+                            Text(_user?['email'] ?? '-',
+                                style: const TextStyle(fontFamily: 'Poppins', color: Colors.white70, fontSize: 13)),
+                            const SizedBox(height: 12),
+                            // Phase badge
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                              decoration: BoxDecoration(
+                                color: _getPhaseColor(_user?['phase']),
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const Icon(Icons.local_hospital, color: Colors.white, size: 16),
+                                  const SizedBox(width: 6),
+                                  Text(_getPhaseLabel(_user?['phase']),
+                                      style: const TextStyle(
+                                          fontFamily: 'Poppins',
+                                          color: Colors.white,
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 13)),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+
+                      // Info Cards
+                      Transform.translate(
+                        offset: const Offset(0, -20),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          child: Column(
+                            children: [
+                              _buildInfoCard([
+                                _buildInfoRow(Icons.badge_outlined, 'NIM', _user?['nim'] ?? '-'),
+                                _buildInfoRow(Icons.school_outlined, 'Semester', '${_user?['current_semester'] ?? '-'}'),
+                                _buildInfoRow(Icons.email_outlined, 'Email', _user?['email'] ?? '-'),
+                              ]),
+                              const SizedBox(height: 12),
+                              _buildInfoCard([
+                                _buildInfoRow(Icons.info_outline, 'Status',
+                                    'PPDS Patologi Anatomi - UNAIR'),
+                                _buildInfoRow(Icons.location_city_outlined, 'Institusi',
+                                    'Universitas Airlangga'),
+                              ]),
+                              const SizedBox(height: 24),
+                              // Logout Button
+                              SizedBox(
+                                width: double.infinity,
+                                child: ElevatedButton.icon(
+                                  onPressed: _logout,
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: AppColors.accentRed,
+                                    foregroundColor: Colors.white,
+                                    padding: const EdgeInsets.symmetric(vertical: 14),
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                                    elevation: 4,
+                                  ),
+                                  icon: const Icon(Icons.logout),
+                                  label: const Text('Logout',
+                                      style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold, fontSize: 16)),
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                       ),
                     ],
                   ),
                 ),
-                const SizedBox(height: 20),
-                Text(
-                  _currentUser?.displayName ?? 'User Name',
-                  textAlign: TextAlign.center,
-                  style: GoogleFonts.poppins(fontSize: 22, fontWeight: FontWeight.bold, color: fullNameColor),
-                ),
-                const SizedBox(height: 5),
-                Text(
-                  _currentUser?.email ?? 'user@example.com',
-                  textAlign: TextAlign.center,
-                  style: GoogleFonts.poppins(fontSize: 16, color: emailColor),
-                ),
-                const SizedBox(height: 40),
-                
-                Container(
-                  padding: const EdgeInsets.symmetric(vertical: 10),
-                  decoration: BoxDecoration(
-                    color: optionsBoxColor, // Warna kotak sesuai permintaan
-                    borderRadius: BorderRadius.circular(20),
-                    boxShadow: [
-                      BoxShadow(
-                        // ignore: deprecated_member_use
-                        color: Colors.black.withOpacity(0.05),
-                        blurRadius: 10,
-                      )
-                    ],
-                  ),
-                  child: Column(
-                    children: [
-                      _buildProfileOption(
-                        icon: Icons.lock_outline,
-                        title: 'Change Password',
-                        iconColor: iconColor,
-                        onTap: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(builder: (context) => const ChangePasswordScreen()),
-                          );
-                        },
-                      ),
-                      const Divider(indent: 20, endIndent: 20),
-                      _buildProfileOption(
-                        icon: Icons.logout,
-                        title: 'Logout',
-                        iconColor: iconColor, // Warna ikon logout disamakan
-                        onTap: _handleLogout,
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 20),
-              ],
-            ),
-          ),
-        ),
-      ),
     );
   }
 
-  Widget _buildProfileOption({
-    required IconData icon,
-    required String title,
-    required Color iconColor,
-    required VoidCallback onTap,
-  }) {
-    // --- PERBAIKAN 4: GAYA LOGOUT DISAMAKAN ---
-    final Color textColor = Colors.grey.shade800;
-
-    return ListTile(
-      leading: Icon(icon, color: iconColor),
-      title: Text(
-        title,
-        style: GoogleFonts.poppins(
-          fontWeight: FontWeight.w600,
-          color: textColor,
-        ),
+  Widget _buildInfoCard(List<Widget> rows) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.06), blurRadius: 10, offset: const Offset(0, 4))],
       ),
-      trailing: Icon(Icons.arrow_forward_ios, size: 16, color: Colors.grey.shade600),
-      onTap: onTap,
+      padding: const EdgeInsets.all(16),
+      child: Column(children: rows),
+    );
+  }
+
+  Widget _buildInfoRow(IconData icon, String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Row(
+        children: [
+          Icon(icon, size: 20, color: AppColors.primaryPurple),
+          const SizedBox(width: 12),
+          SizedBox(
+            width: 90,
+            child: Text(label, style: TextStyle(fontFamily: 'Poppins', fontSize: 13, color: AppColors.textGrey)),
+          ),
+          Expanded(
+            child: Text(value,
+                style: const TextStyle(fontFamily: 'Poppins', fontSize: 13, fontWeight: FontWeight.w600)),
+          ),
+        ],
+      ),
     );
   }
 }

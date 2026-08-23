@@ -1,17 +1,19 @@
 import 'package:flutter/material.dart';
+import 'package:fp_pemrograman/colors.dart';
 import 'package:fp_pemrograman/service/auth_service.dart';
 import 'package:fp_pemrograman/screens/register_screen.dart';
-import 'package:fp_pemrograman/screens/home_screen.dart'; // Added this import
-import 'package:fp_pemrograman/colors.dart';
-import 'package:google_fonts/google_fonts.dart';
+import 'package:fp_pemrograman/screens/dashboard_screen.dart';
+
 import 'dart:math';
 
 class LoginScreen extends StatefulWidget {
+  const LoginScreen({super.key});
+
   @override
-  _LoginScreenState createState() => _LoginScreenState();
+  LoginScreenState createState() => LoginScreenState();
 }
 
-class _LoginScreenState extends State<LoginScreen> {
+class LoginScreenState extends State<LoginScreen> {
   final AuthService _auth = AuthService();
   final _formKey = GlobalKey<FormState>();
   String email = '';
@@ -23,21 +25,19 @@ class _LoginScreenState extends State<LoginScreen> {
   void _tryLogin() async {
     if (_formKey.currentState!.validate()) {
       setState(() => _isLoading = true);
-      
-      // Call the real AuthService method
+
       dynamic result = await _auth.signInWithEmailAndPassword(email, password);
 
+      if (!mounted) return;
       if (result == null) {
-        // If login fails, show an error
         setState(() {
           error = 'Could not sign in with those credentials.';
           _isLoading = false;
         });
       } else {
-        // If login is successful, navigate to the HomeScreen.
         Navigator.pushReplacement(
           context,
-          MaterialPageRoute(builder: (context) => HomeScreen()),
+          MaterialPageRoute(builder: (context) => DashboardScreen()),
         );
       }
     }
@@ -73,9 +73,12 @@ class _LoginScreenState extends State<LoginScreen> {
                       begin: Alignment.topCenter,
                       end: Alignment.bottomCenter,
                       colors: [
-                        AppColors.backgroundLighter,
-                        AppColors.accentBrown,
+                        AppColors.secondaryPink,
+                        AppColors.secondaryMagenta,
+                        AppColors.darkMagenta,
+                        AppColors.primaryDark,
                       ],
+                      stops: const [0.0, 0.3, 0.7, 1.0],
                     ),
                   ),
                 ),
@@ -83,9 +86,9 @@ class _LoginScreenState extends State<LoginScreen> {
                   bottom: 0,
                   child: Container(
                     width: screenWidth,
-                    height: screenHeight * 0.75,
+                    height: screenHeight * 0.85,
                     decoration: BoxDecoration(
-                      color: AppColors.backgroundLightest,
+                      color: Colors.white,
                       borderRadius: BorderRadius.only(
                         topLeft: Radius.circular(scaleW(120)),
                         topRight: Radius.circular(scaleW(120)),
@@ -98,26 +101,27 @@ class _LoginScreenState extends State<LoginScreen> {
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        SizedBox(height: scaleH(250)),
+                        SizedBox(height: scaleH(350)),
                         Text(
                           'Login',
-                          style: GoogleFonts.poppins(
+                          style: TextStyle(fontFamily: 'Poppins', 
                             fontSize: scaleFont(120),
                             fontWeight: FontWeight.bold,
-                            color: AppColors.primaryOrange,
+                            color: AppColors.accentRed, // merah tua
                             shadows: [
                               Shadow(
                                 blurRadius: 4.0,
-                                color: Colors.black.withOpacity(0.25),
+                                color: Colors.black.withValues(alpha: 0.25),
                                 offset: Offset(0, 4),
                               ),
                             ],
                           ),
                         ),
-                        SizedBox(height: scaleH(180)),
+                        SizedBox(height: scaleH(100)),
                         Container(
                           width: screenWidth,
-                          padding: EdgeInsets.symmetric(horizontal: scaleW(100)),
+                          padding:
+                              EdgeInsets.symmetric(horizontal: scaleW(100)),
                           child: Form(
                             key: _formKey,
                             child: Column(
@@ -127,7 +131,17 @@ class _LoginScreenState extends State<LoginScreen> {
                                   hint: 'Enter your email',
                                   icon: Icons.email_outlined,
                                   onChanged: (val) => email = val,
-                                  validator: (val) => val!.isEmpty ? 'Please enter an email' : null,
+                                  validator: (val) {
+                                    if (val == null || val.isEmpty) {
+                                      return 'Please enter an email';
+                                    }
+                                    // Simple email regex validation
+                                    const emailPattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$';
+                                    if (!RegExp(emailPattern).hasMatch(val)) {
+                                      return 'Please enter a valid email';
+                                    }
+                                    return null;
+                                  },
                                   keyboardType: TextInputType.emailAddress,
                                 ),
                                 SizedBox(height: scaleH(50)),
@@ -137,15 +151,20 @@ class _LoginScreenState extends State<LoginScreen> {
                                   icon: Icons.lock_outline,
                                   obscureText: _isPasswordObscure,
                                   onChanged: (val) => password = val,
-                                  validator: (val) => val!.length < 6 ? 'Password must be 6+ characters' : null,
+                                  validator: (val) => val!.length < 6
+                                      ? 'Password must be 6+ characters'
+                                      : null,
                                   suffixIcon: IconButton(
                                     icon: Icon(
-                                      _isPasswordObscure ? Icons.visibility_off : Icons.visibility,
-                                      color: AppColors.primaryOrange,
+                                      _isPasswordObscure
+                                          ? Icons.visibility_off
+                                          : Icons.visibility,
+                                      color: AppColors.accentRed, // merah tua
                                     ),
                                     onPressed: () {
                                       setState(() {
-                                        _isPasswordObscure = !_isPasswordObscure;
+                                        _isPasswordObscure =
+                                            !_isPasswordObscure;
                                       });
                                     },
                                   ),
@@ -154,11 +173,14 @@ class _LoginScreenState extends State<LoginScreen> {
                                 _buildLoginButton(context),
                                 SizedBox(height: scaleH(160)),
                                 _buildRegisterLink(context),
-                                 if (error.isNotEmpty) ...[
+                                if (error.isNotEmpty) ...[
                                   SizedBox(height: scaleH(20)),
                                   Text(
                                     error,
-                                    style: TextStyle(color: AppColors.primaryOrange, fontSize: scaleFont(30)),
+                                    style: TextStyle(
+                                      color: AppColors.accentRed, // merah tua
+                                      fontSize: scaleFont(30),
+                                    ),
                                     textAlign: TextAlign.center,
                                   ),
                                 ],
@@ -185,19 +207,23 @@ class _LoginScreenState extends State<LoginScreen> {
     TextInputType keyboardType = TextInputType.text,
     Widget? suffixIcon,
   }) {
-    double scaleFont(double val) => val * min(MediaQuery.of(context).size.width / 1080.0, MediaQuery.of(context).size.height / 1920.0);
-    
+    double scaleFont(double val) =>
+        val *
+        min(MediaQuery.of(context).size.width / 1080.0,
+            MediaQuery.of(context).size.height / 1920.0);
+
     return TextFormField(
       onChanged: onChanged,
       validator: validator,
       obscureText: obscureText,
       keyboardType: keyboardType,
-      style: GoogleFonts.poppins(fontSize: scaleFont(40), color: Colors.black),
+      style: TextStyle(fontFamily: 'Poppins', fontSize: scaleFont(40), color: Colors.black),
       decoration: InputDecoration(
-        prefixIcon: Icon(icon, color: AppColors.primaryOrange),
+        prefixIcon: Icon(icon, color: AppColors.accentRed), // magenta-red
         suffixIcon: suffixIcon,
         hintText: hint,
-        hintStyle: GoogleFonts.poppins(fontSize: scaleFont(40), color: Colors.grey),
+        hintStyle:
+            TextStyle(fontFamily: 'Poppins', fontSize: scaleFont(40), color: Colors.grey),
         filled: true,
         fillColor: Colors.grey[200],
         border: OutlineInputBorder(
@@ -209,25 +235,29 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-   Widget _buildLoginButton(BuildContext context) {
-    double scaleH(double val) => val * MediaQuery.of(context).size.height / 1920.0;
-    double scaleFont(double val) => val * min(MediaQuery.of(context).size.width / 1080.0, MediaQuery.of(context).size.height / 1920.0);
-    
+  Widget _buildLoginButton(BuildContext context) {
+    double scaleH(double val) =>
+        val * MediaQuery.of(context).size.height / 1920.0;
+    double scaleFont(double val) =>
+        val *
+        min(MediaQuery.of(context).size.width / 1080.0,
+            MediaQuery.of(context).size.height / 1920.0);
+
     return GestureDetector(
       onTap: _tryLogin,
       child: Container(
         width: double.infinity,
         height: scaleH(160),
         decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: [AppColors.secondaryTeal, AppColors.darkTeal],
+          gradient: const LinearGradient(
+            colors: [AppColors.primaryPurple, AppColors.accentRed],
             begin: Alignment.centerLeft,
             end: Alignment.centerRight,
           ),
           borderRadius: BorderRadius.circular(30.0),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.15),
+              color: Colors.black.withValues(alpha: 0.25),
               spreadRadius: 1,
               blurRadius: 10,
               offset: Offset(0, 5),
@@ -237,10 +267,10 @@ class _LoginScreenState extends State<LoginScreen> {
         child: Center(
           child: Text(
             'Login',
-            style: GoogleFonts.poppins(
+            style: TextStyle(fontFamily: 'Poppins', 
               fontSize: scaleFont(50),
               fontWeight: FontWeight.bold,
-              color: AppColors.backgroundLightest,
+              color: Colors.white, // putih
             ),
           ),
         ),
@@ -249,14 +279,17 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Widget _buildRegisterLink(BuildContext context) {
-    double scaleFont(double val) => val * min(MediaQuery.of(context).size.width / 1080.0, MediaQuery.of(context).size.height / 1920.0);
-    
+    double scaleFont(double val) =>
+        val *
+        min(MediaQuery.of(context).size.width / 1080.0,
+            MediaQuery.of(context).size.height / 1920.0);
+
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
         Text(
-          "Don’t have an account?",
-          style: GoogleFonts.poppins(
+          "Don't have an account?",
+          style: TextStyle(fontFamily: 'Poppins', 
             fontSize: scaleFont(40),
             color: Colors.black54,
           ),
@@ -270,10 +303,10 @@ class _LoginScreenState extends State<LoginScreen> {
           },
           child: Text(
             'Register',
-            style: GoogleFonts.poppins(
+            style: TextStyle(fontFamily: 'Poppins', 
               fontSize: scaleFont(40),
               fontWeight: FontWeight.bold,
-              color: AppColors.primaryOrange,
+              color: AppColors.accentRed, // merah tua
             ),
           ),
         ),
