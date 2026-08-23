@@ -32,7 +32,12 @@ class LoginScreenState extends State<LoginScreen> {
       if (!mounted) return;
       if (result == null) {
         setState(() {
-          error = 'Could not sign in with those credentials.';
+          error = 'Login Failed: Could not connect to API.';
+          _isLoading = false;
+        });
+      } else if (result['success'] == false) {
+          setState(() {
+          error = 'Login Failed: ${result['message'] ?? 'Could not sign in with those credentials.'}';
           _isLoading = false;
         });
       } else {

@@ -150,13 +150,14 @@ def register():
 def login():
     data = request.get_json() or {}
     email = data.get('email', '').strip().lower()
-    password = data.get('password', '')
+    password = data.get('password', '').strip()
 
     if not email or not password:
         return jsonify({'error': 'Email dan password wajib diisi'}), 400
 
     user = User.query.filter_by(email=email).first()
     if not user or not check_password_hash(user.password_hash, password):
+        print(f"Login Failed: email='{email}', password='{password}' (original was '{data.get('password')}')")
         return jsonify({'error': 'Email atau password salah'}), 401
 
     token = encode_token(user.id)

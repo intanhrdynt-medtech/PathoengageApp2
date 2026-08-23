@@ -4,7 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class AuthService {
-  // Use Vercel URL
+  // Use Vercel Backend
   final String baseUrl = 'https://pathoengage-backend.vercel.app'; 
   
   Future<String?> getToken() async {
@@ -48,11 +48,17 @@ class AuthService {
         return data['user'];
       } else {
         debugPrint(data['error']);
-        return null;
+        return {
+          'success': false,
+          'message': data['error'] ?? 'Email atau password salah'
+        };
       }
     } catch (e) {
       debugPrint('Login Error: $e');
-      return null;
+      return {
+        'success': false,
+        'message': 'Error: $e'
+      };
     }
   }
 
@@ -88,7 +94,7 @@ class AuthService {
       return {
         'success': false,
         'user': null,
-        'message': 'An unexpected error occurred. Please try again.',
+        'message': 'Registration Error: $e',
       };
     }
   }

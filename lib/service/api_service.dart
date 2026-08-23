@@ -5,7 +5,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'auth_service.dart';
 
 class ApiService {
-  final String baseUrl = 'https://pathoengage-backend.vercel.app';
+  // Use Vercel Backend
+  final String baseUrl = 'https://pathoengage-backend.vercel.app'; 
 
   Future<String?> _getToken() async {
     final prefs = await SharedPreferences.getInstance();
