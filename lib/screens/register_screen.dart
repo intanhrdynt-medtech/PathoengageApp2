@@ -139,116 +139,121 @@ class RegisterScreenState extends State<RegisterScreen> {
                           ),
                         ),
                         SizedBox(height: scaleH(120)),
-                        Container(
-                          width: screenWidth,
-                          padding:
-                              EdgeInsets.symmetric(horizontal: scaleW(100)),
-                          child: Form(
-                            key: _formKey,
-                            child: Column(
-                              children: [
-                                _buildTextFieldWithIcon(
-                                  context: context,
-                                  hint: 'Full Name',
-                                  icon: Icons.person_outline,
-                                  onChanged: (val) => fullName = val,
-                                  validator: (val) => val!.isEmpty
-                                      ? 'Enter your full name'
-                                      : null,
-                                ),
-                                _buildTextFieldWithIcon(
-                                  context: context,
-                                  hint: 'NIM',
-                                  icon: Icons.badge_outlined,
-                                  onChanged: (val) => nim = val,
-                                  validator: (val) => val!.isEmpty
-                                      ? 'Enter your NIM'
-                                      : null,
-                                ),
-                                SizedBox(height: scaleH(50)),
-                                _buildTextFieldWithIcon(
-                                  context: context,
-                                  hint: 'Enter your email',
-                                  icon: Icons.email_outlined,
-                                  onChanged: (val) => email = val,
-                                  validator: (val) {
-                                    if (val == null || val.isEmpty) {
-                                      return 'Please enter an email';
-                                    }
-                                    // Simple email regex validation
-                                    const emailPattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$';
-                                    if (!RegExp(emailPattern).hasMatch(val)) {
-                                      return 'Please enter a valid email';
-                                    }
-                                    return null;
-                                  },
-                                  keyboardType: TextInputType.emailAddress,
-                                ),
-                                SizedBox(height: scaleH(50)),
-                                _buildTextFieldWithIcon(
-                                  context: context,
-                                  hint: 'Enter password',
-                                  icon: Icons.lock_outline,
-                                  obscureText: _isPasswordObscure,
-                                  onChanged: (val) => password = val,
-                                  validator: (val) => val!.length < 6
-                                      ? 'Password must be 6+ characters'
-                                      : null,
-                                  suffixIcon: IconButton(
-                                    icon: Icon(
-                                      _isPasswordObscure
-                                          ? Icons.visibility_off
-                                          : Icons.visibility,
-                                      color: AppColors.accentRed,
+                        Center(
+                          child: ConstrainedBox(
+                            constraints: const BoxConstraints(maxWidth: 600),
+                            child: Container(
+                              width: screenWidth,
+                              padding: EdgeInsets.symmetric(horizontal: screenWidth > 600 ? 0 : scaleW(100)),
+                              child: Form(
+                                key: _formKey,
+                                child: Column(
+                                  children: [
+                                    _buildTextFieldWithIcon(
+                                      context: context,
+                                      hint: 'Full Name',
+                                      icon: Icons.person_outline,
+                                      onChanged: (val) => fullName = val,
+                                      validator: (val) => val!.isEmpty
+                                          ? 'Enter your full name'
+                                          : null,
                                     ),
-                                    onPressed: () {
-                                      setState(() {
-                                        _isPasswordObscure =
-                                            !_isPasswordObscure;
-                                      });
-                                    },
-                                  ),
-                                ),
-                                SizedBox(height: scaleH(50)),
-                                _buildTextFieldWithIcon(
-                                  context: context,
-                                  hint: 'Confirm password',
-                                  icon: Icons.lock_outline,
-                                  obscureText: _isConfirmPasswordObscure,
-                                  onChanged: (val) => confirmPassword = val,
-                                  validator: (val) => val!.isEmpty
-                                      ? 'Confirm your password'
-                                      : null,
-                                  suffixIcon: IconButton(
-                                    icon: Icon(
-                                      _isConfirmPasswordObscure
-                                          ? Icons.visibility_off
-                                          : Icons.visibility,
-                                      color: AppColors.accentRed,
+                                    SizedBox(height: scaleH(50)),
+                                    _buildTextFieldWithIcon(
+                                      context: context,
+                                      hint: 'NIM',
+                                      icon: Icons.badge_outlined,
+                                      onChanged: (val) => nim = val,
+                                      validator: (val) => val!.isEmpty
+                                          ? 'Enter your NIM'
+                                          : null,
                                     ),
-                                    onPressed: () {
-                                      setState(() {
-                                        _isConfirmPasswordObscure =
-                                            !_isConfirmPasswordObscure;
-                                      });
-                                    },
-                                  ),
+                                    SizedBox(height: scaleH(50)),
+                                    _buildTextFieldWithIcon(
+                                      context: context,
+                                      hint: 'Enter your email',
+                                      icon: Icons.email_outlined,
+                                      onChanged: (val) => email = val,
+                                      validator: (val) {
+                                        if (val == null || val.isEmpty) {
+                                          return 'Please enter an email';
+                                        }
+                                        // Simple email regex validation
+                                        const emailPattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$';
+                                        if (!RegExp(emailPattern).hasMatch(val)) {
+                                          return 'Please enter a valid email';
+                                        }
+                                        return null;
+                                      },
+                                      keyboardType: TextInputType.emailAddress,
+                                    ),
+                                    SizedBox(height: scaleH(50)),
+                                    _buildTextFieldWithIcon(
+                                      context: context,
+                                      hint: 'Enter password',
+                                      icon: Icons.lock_outline,
+                                      obscureText: _isPasswordObscure,
+                                      onChanged: (val) => password = val,
+                                      validator: (val) => val!.length < 6
+                                          ? 'Password must be 6+ characters'
+                                          : null,
+                                      suffixIcon: IconButton(
+                                        icon: Icon(
+                                          _isPasswordObscure
+                                              ? Icons.visibility_off
+                                              : Icons.visibility,
+                                          color: AppColors.accentRed,
+                                        ),
+                                        onPressed: () {
+                                          setState(() {
+                                            _isPasswordObscure =
+                                                !_isPasswordObscure;
+                                          });
+                                        },
+                                      ),
+                                    ),
+                                    SizedBox(height: scaleH(50)),
+                                    _buildTextFieldWithIcon(
+                                      context: context,
+                                      hint: 'Confirm password',
+                                      icon: Icons.lock_outline,
+                                      obscureText: _isConfirmPasswordObscure,
+                                      onChanged: (val) => confirmPassword = val,
+                                      validator: (val) => val!.isEmpty
+                                          ? 'Confirm your password'
+                                          : null,
+                                      suffixIcon: IconButton(
+                                        icon: Icon(
+                                          _isConfirmPasswordObscure
+                                              ? Icons.visibility_off
+                                              : Icons.visibility,
+                                          color: AppColors.accentRed,
+                                        ),
+                                        onPressed: () {
+                                          setState(() {
+                                            _isConfirmPasswordObscure =
+                                                !_isConfirmPasswordObscure;
+                                          });
+                                        },
+                                      ),
+                                    ),
+                                    SizedBox(height: scaleH(80)),
+                                    _buildRegisterButton(context),
+                                    SizedBox(height: scaleH(80)),
+                                    _buildLoginLink(context),
+                                    if (error.isNotEmpty) ...[
+                                      SizedBox(height: scaleH(20)),
+                                      Text(
+                                        error,
+                                        style: TextStyle(
+                                            color: AppColors.accentRed,
+                                            fontSize: scaleFont(30)),
+                                        textAlign: TextAlign.center,
+                                      ),
+                                    ],
+                                  ],
                                 ),
-                                SizedBox(height: scaleH(80)),
-                                _buildRegisterButton(context),
-                                SizedBox(height: scaleH(80)),
-                                _buildLoginLink(context),
-                                if (error.isNotEmpty) ...[
-                                  SizedBox(height: scaleH(20)),
-                                  Text(
-                                    error,
-                                    style: TextStyle(
-                                        color: AppColors.accentRed,
-                                        fontSize: scaleFont(30)),
-                                    textAlign: TextAlign.center,
-                                  ),
-                                ],
-                              ],
+                              ),
                             ),
                           ),
                         ),

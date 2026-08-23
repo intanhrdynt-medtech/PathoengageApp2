@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:fp_pemrograman/colors.dart';
 import 'package:fp_pemrograman/service/api_service.dart';
+import 'package:fp_pemrograman/widgets/responsive_wrapper.dart';
 import 'package:intl/intl.dart';
+import 'package:file_picker/file_picker.dart';
 
 class ExamsScreen extends StatefulWidget {
   const ExamsScreen({super.key});
@@ -64,47 +66,94 @@ class _ExamsScreenState extends State<ExamsScreen> with SingleTickerProviderStat
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
-          : TabBarView(
-              controller: _tabController,
-              children: _tabs.map((type) {
-                final exams = _filterExams(type);
-                if (exams.isEmpty) {
-                  return Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.school_outlined, size: 64, color: AppColors.textGrey.withOpacity(0.5)),
-                        const SizedBox(height: 12),
-                        Text('Belum ada data ujian', style: TextStyle(color: AppColors.textGrey, fontFamily: 'Poppins')),
-                      ],
-                    ),
+          : ResponsiveWrapper(
+              child: TabBarView(
+                controller: _tabController,
+                children: _tabs.map((type) {
+                  final exams = _filterExams(type);
+                  if (exams.isEmpty) {
+                    return Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.school_outlined, size: 64, color: AppColors.textGrey.withOpacity(0.5)),
+                          const SizedBox(height: 12),
+                          Text('Belum ada data ujian', style: TextStyle(color: AppColors.textGrey, fontFamily: 'Poppins')),
+                        ],
+                      ),
+                    );
+                  }
+                  return ListView.builder(
+                    padding: const EdgeInsets.all(16),
+                    itemCount: exams.length,
+                    itemBuilder: (ctx, i) => InkWell(
+                        onTap: () => _handleExamTap(exams[i]),
+                        child: _buildExamCard(exams[i])),
                   );
-                }
-                return ListView.builder(
-                  padding: const EdgeInsets.all(16),
-                  itemCount: exams.length,
-                  itemBuilder: (ctx, i) => _buildExamCard(exams[i]),
-                );
-              }).toList(),
+                }).toList(),
+              ),
             ),
     );
   }
 
+  Future<void> _handleExamTap(Map<String, dynamic> exam) async {
+    final currentStatus = exam['result'] ?? 'terjadwal';
+    
+    if (currentStatus == 'lulus' || currentStatus == 'tidak_lulus') {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Ujian ini sudah selesai dinilai.')));
+      return;
+    }
+    
+    if (currentStatus == 'pending_verification') {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Menunggu verifikasi admin.')));
+      return;
+    }
+
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['pdf', 'jpg', 'jpeg', 'png'],
+      );
+
+      if (result != null && result.files.isNotEmpty) {
+        final file = result.files.first;
+        final mockUrl = 'https://storage.pathoengage.com/evidence/${file.name}';
+        
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Mengunggah bukti...')));
+        
+        final success = await _api.updateExamEvidence(exam['id'], 'pending_verification', mockUrl);
+        if (success) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Bukti berhasil diunggah. Menunggu verifikasi admin.')));
+          _loadExams();
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Gagal mengunggah bukti.')));
+        }
+      }
+    } catch (e) {
+      debugPrint("File picker error: $e");
+    }
+  }
+
   Widget _buildExamCard(Map<String, dynamic> exam) {
-    final isPassed = exam['result'] == 'lulus';
-    final isFailed = exam['result'] == 'tidak_lulus';
-    final scheduledDate = exam['scheduled_date'] != null
-        ? DateFormat('dd MMM yyyy').format(DateTime.parse(exam['scheduled_date']))
+    bool isPassed = exam['result'] == 'lulus';
+    bool isFailed = exam['result'] == 'tidak_lulus';
+    bool isPending = exam['result'] == 'pending_verification';
+
+    String? scheduledDate = exam['scheduled_date'] != null
+        ? DateFormat('dd MMM yyyy').format(DateTime.parse(exam['scheduled_date']).toLocal())
         : null;
 
     Color statusColor = Colors.grey;
-    String statusLabel = 'Terjadwal';
+    String statusLabel = 'Upload Bukti';
     if (isPassed) {
       statusColor = AppColors.successGreen;
       statusLabel = 'Lulus';
     } else if (isFailed) {
       statusColor = AppColors.accentRed;
       statusLabel = 'Tidak Lulus';
+    } else if (isPending) {
+      statusColor = AppColors.warningOrange;
+      statusLabel = 'Sedang Verifikasi';
     }
 
     Color phaseColor = AppColors.textGrey;

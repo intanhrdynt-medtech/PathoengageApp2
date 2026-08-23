@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:fp_pemrograman/colors.dart';
 import 'package:fp_pemrograman/service/api_service.dart';
+import 'package:fp_pemrograman/widgets/responsive_wrapper.dart';
 import 'package:intl/intl.dart';
 
 class RotationsScreen extends StatefulWidget {
@@ -63,23 +64,25 @@ class _RotationsScreenState extends State<RotationsScreen> {
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
-          : _rotations.isEmpty
-              ? Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.local_hospital_outlined, size: 72, color: AppColors.textGrey.withOpacity(0.4)),
-                      const SizedBox(height: 16),
-                      Text('Belum ada data stase luar',
-                          style: TextStyle(fontFamily: 'Poppins', color: AppColors.textGrey, fontSize: 16)),
-                    ],
-                  ),
-                )
-              : ListView.builder(
-                  padding: const EdgeInsets.all(16),
-                  itemCount: _rotations.length,
-                  itemBuilder: (ctx, i) => _buildRotationCard(_rotations[i]),
-                ),
+          : ResponsiveWrapper(
+              child: _rotations.isEmpty
+                  ? Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.local_hospital_outlined, size: 72, color: AppColors.textGrey.withOpacity(0.4)),
+                          const SizedBox(height: 16),
+                          Text('Belum ada data stase luar',
+                              style: TextStyle(fontFamily: 'Poppins', color: AppColors.textGrey, fontSize: 16)),
+                        ],
+                      ),
+                    )
+                  : ListView.builder(
+                      padding: const EdgeInsets.all(16),
+                      itemCount: _rotations.length,
+                      itemBuilder: (ctx, i) => _buildRotationCard(_rotations[i]),
+                    ),
+            ),
     );
   }
 

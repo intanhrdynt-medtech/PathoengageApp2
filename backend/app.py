@@ -59,6 +59,26 @@ def auth_required(f):
     return decorated
 
 
+def admin_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        auth = request.headers.get('Authorization', '')
+        if not auth.startswith('Bearer '):
+            return jsonify({'error': 'Missing token'}), 401
+        token = auth.split(' ', 1)[1]
+        user_id = decode_token(token)
+        if not user_id:
+            return jsonify({'error': 'Invalid or expired token'}), 401
+        user = User.query.get(user_id)
+        if not user:
+            return jsonify({'error': 'User not found'}), 404
+        if user.role != 'admin':
+            return jsonify({'error': 'Admin access required'}), 403
+        request.user = user
+        return f(*args, **kwargs)
+    return decorated
+
+
 def user_dict(user):
     return {
         'id': user.id,
@@ -198,6 +218,7 @@ def exam_dict(e):
         'exam_type': e.exam_type,
         'scheduled_date': e.scheduled_date.isoformat() if e.scheduled_date else None,
         'result': e.result,
+        'evidence_url': e.evidence_url,
         'score': e.score,
         'notes': e.notes,
     }
@@ -216,7 +237,7 @@ def update_exam(eid):
     if not exam:
         return jsonify({'error': 'Tidak ditemukan'}), 404
     data = request.get_json() or {}
-    for field in ['result', 'score', 'notes', 'scheduled_date']:
+    for field in ['result', 'score', 'notes', 'scheduled_date', 'evidence_url']:
         if field in data:
             setattr(exam, field, data[field])
     db.session.commit()
@@ -234,7 +255,10 @@ def task_dict(t):
         'target_semester': t.target_semester,
         'deadline': t.deadline.isoformat() if t.deadline else None,
         'is_completed': t.is_completed,
+        'status': t.status,
         'document_proof_url': t.document_proof_url,
+        'link_url': t.link_url,
+        'notes': t.notes,
     }
 
 
@@ -251,7 +275,7 @@ def update_academic_task(tid):
     if not task:
         return jsonify({'error': 'Tidak ditemukan'}), 404
     data = request.get_json() or {}
-    for field in ['is_completed', 'document_proof_url', 'description']:
+    for field in ['is_completed', 'status', 'document_proof_url', 'description', 'notes', 'link_url']:
         if field in data:
             setattr(task, field, data[field])
     db.session.commit()
@@ -347,6 +371,112 @@ def update_phase():
     request.user.phase = phase
     db.session.commit()
     return jsonify(user_dict(request.user))
+
+
+# ── Admin ───────────────────────────────────────────────────────────────────────
+
+@app.route('/admin/users', methods=['GET'])
+@admin_required
+def get_users():
+    users = User.query.all()
+    return jsonify([user_dict(u) for u in users])
+
+
+@app.route('/admin/users', methods=['POST'])
+@admin_required
+def create_admin():
+    data = request.get_json() or {}
+    email = data.get('email', '').strip().lower()
+    password = data.get('password', '')
+    full_name = data.get('full_name', '').strip()
+    nim = data.get('nim', '').strip()
+    role = data.get('role', 'ppds').strip()
+    
+    if not email or not password:
+        return jsonify({'error': 'Email dan password wajib diisi'}), 400
+    if len(password) < 6:
+        return jsonify({'error': 'Password minimal 6 karakter'}), 400
+    if User.query.filter_by(email=email).first():
+        return jsonify({'error': 'Email sudah terdaftar'}), 400
+
+    user = User(
+        email=email,
+        password_hash=generate_password_hash(password),
+        full_name=full_name or email,
+        nim=nim or '-',
+        role=role,
+    )
+    db.session.add(user)
+    db.session.flush()
+    if role == 'ppds':
+        import init_db
+        init_db.assign_standard_curriculum(user.id, is_seed=False)
+    db.session.commit()
+    return jsonify(user_dict(user))
+
+
+@app.route('/admin/pending_verifications', methods=['GET'])
+@admin_required
+def get_pending_verifications():
+    pending_academic = AcademicTask.query.filter_by(status='pending_verification').all()
+    pending_exams = Exam.query.filter_by(result='pending_verification').all()
+    pending_comps = CompetencyLog.query.filter_by(status='pending_verification').all()
+    
+    def enrich_task(t):
+        d = task_dict(t)
+        d['user_name'] = t.user.full_name
+        d['type_category'] = 'academic'
+        return d
+        
+    def enrich_exam(e):
+        d = exam_dict(e)
+        d['user_name'] = e.user.full_name
+        d['type_category'] = 'exam'
+        return d
+        
+    def enrich_comp(c):
+        d = comp_dict(c)
+        d['user_name'] = c.user.full_name
+        d['type_category'] = 'competency'
+        return d
+
+    results = []
+    results.extend([enrich_task(t) for t in pending_academic])
+    results.extend([enrich_exam(e) for e in pending_exams])
+    results.extend([enrich_comp(c) for c in pending_comps])
+    
+    return jsonify(results)
+
+
+@app.route('/admin/verify/<type_category>/<int:item_id>', methods=['PUT'])
+@admin_required
+def verify_task(type_category, item_id):
+    data = request.get_json() or {}
+    status = data.get('status', 'completed')
+    
+    if type_category == 'academic':
+        item = AcademicTask.query.get(item_id)
+        if not item: return jsonify({'error': 'Not found'}), 404
+        item.status = status
+        if status == 'completed':
+            item.is_completed = True
+            
+    elif type_category == 'exam':
+        item = Exam.query.get(item_id)
+        if not item: return jsonify({'error': 'Not found'}), 404
+        item.result = 'lulus' if status == 'completed' else status
+        
+    elif type_category == 'competency':
+        item = CompetencyLog.query.get(item_id)
+        if not item: return jsonify({'error': 'Not found'}), 404
+        item.status = status
+        if status == 'completed':
+            item.completed_at = datetime.datetime.utcnow()
+    else:
+        return jsonify({'error': 'Invalid category'}), 400
+        
+    db.session.commit()
+    return jsonify({'success': True, 'id': item_id, 'type_category': type_category})
 
 
 if __name__ == '__main__':

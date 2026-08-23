@@ -3,6 +3,7 @@ import 'package:fp_pemrograman/colors.dart';
 import 'package:fp_pemrograman/service/auth_service.dart';
 import 'package:fp_pemrograman/screens/register_screen.dart';
 import 'package:fp_pemrograman/screens/dashboard_screen.dart';
+import 'package:fp_pemrograman/screens/admin_dashboard_screen.dart';
 
 import 'dart:math';
 
@@ -35,10 +36,17 @@ class LoginScreenState extends State<LoginScreen> {
           _isLoading = false;
         });
       } else {
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (context) => DashboardScreen()),
-        );
+        if (result['role'] == 'admin') {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (context) => const AdminDashboardScreen()),
+          );
+        } else {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (context) => DashboardScreen()),
+          );
+        }
       }
     }
   }
@@ -118,11 +126,13 @@ class LoginScreenState extends State<LoginScreen> {
                           ),
                         ),
                         SizedBox(height: scaleH(100)),
-                        Container(
-                          width: screenWidth,
-                          padding:
-                              EdgeInsets.symmetric(horizontal: scaleW(100)),
-                          child: Form(
+                        Center(
+                          child: ConstrainedBox(
+                            constraints: const BoxConstraints(maxWidth: 600),
+                            child: Container(
+                              width: screenWidth,
+                              padding: EdgeInsets.symmetric(horizontal: screenWidth > 600 ? 0 : scaleW(100)),
+                              child: Form(
                             key: _formKey,
                             child: Column(
                               children: [
@@ -188,9 +198,11 @@ class LoginScreenState extends State<LoginScreen> {
                             ),
                           ),
                         ),
-                      ],
-                    ),
+                      ),
+                      ),
+                    ],
                   ),
+                ),
                 ),
               ],
             ),

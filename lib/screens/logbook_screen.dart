@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:fp_pemrograman/colors.dart';
 import 'package:fp_pemrograman/service/api_service.dart';
+import 'package:fp_pemrograman/widgets/responsive_wrapper.dart';
+import 'package:intl/intl.dart';
 import 'package:file_picker/file_picker.dart';
 
 class LogbookScreen extends StatefulWidget {
@@ -135,6 +137,7 @@ class _LogbookScreenState extends State<LogbookScreen> with SingleTickerProvider
         elevation: 0,
         bottom: TabBar(
           controller: _tabController,
+          isScrollable: true,
           indicatorColor: AppColors.accentRed,
           labelColor: Colors.white,
           unselectedLabelColor: Colors.white60,
@@ -144,76 +147,79 @@ class _LogbookScreenState extends State<LogbookScreen> with SingleTickerProvider
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
-          : TabBarView(
-              controller: _tabController,
-              children: _phases.map((phase) {
-                final items = _filterByPhase(phase);
-                final completed = items.where((c) => c['status'] == 'completed').length;
+          : ResponsiveWrapper(
+              child: TabBarView(
+                controller: _tabController,
+                children: _phases.map((phase) {
+                  final items = _filterByPhase(phase);
+                  final completed = items.where((c) => c['status'] == 'completed').length;
 
-                return Column(
-                  children: [
-                    // Progress banner
-                    if (items.isNotEmpty)
-                      Container(
-                        margin: const EdgeInsets.all(16),
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            colors: [AppColors.primaryPurple, AppColors.darkMagenta],
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
+                  return Column(
+                    children: [
+                      // Progress banner
+                      if (items.isNotEmpty)
+                        Container(
+                          margin: const EdgeInsets.all(16),
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              colors: [AppColors.primaryPurple, AppColors.darkMagenta],
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                            ),
+                            borderRadius: BorderRadius.circular(16),
+                            boxShadow: [BoxShadow(color: AppColors.primaryPurple.withOpacity(0.3), blurRadius: 10, offset: const Offset(0, 4))],
                           ),
-                          borderRadius: BorderRadius.circular(16),
-                          boxShadow: [BoxShadow(color: AppColors.primaryPurple.withOpacity(0.3), blurRadius: 10, offset: const Offset(0, 4))],
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Text('Progres Kompetensi',
-                                    style: const TextStyle(fontFamily: 'Poppins', color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
-                                Text('$completed / ${items.length} selesai',
-                                    style: const TextStyle(fontFamily: 'Poppins', color: Colors.white70, fontSize: 12)),
-                              ],
-                            ),
-                            const SizedBox(height: 10),
-                            ClipRRect(
-                              borderRadius: BorderRadius.circular(8),
-                              child: LinearProgressIndicator(
-                                value: items.isEmpty ? 0 : completed / items.length,
-                                backgroundColor: Colors.white.withOpacity(0.2),
-                                valueColor: const AlwaysStoppedAnimation<Color>(Colors.white),
-                                minHeight: 8,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    // List
-                    Expanded(
-                      child: items.isEmpty
-                          ? Center(
-                              child: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                 children: [
-                                  Icon(Icons.book_outlined, size: 64, color: AppColors.textGrey.withOpacity(0.4)),
-                                  const SizedBox(height: 12),
-                                  Text('Tidak ada kompetensi di tahap ini',
-                                      style: TextStyle(color: AppColors.textGrey, fontFamily: 'Poppins')),
+                                  Text('Progres Kompetensi',
+                                      style: const TextStyle(fontFamily: 'Poppins', color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
+                                  Text('$completed / ${items.length} selesai',
+                                      style: const TextStyle(fontFamily: 'Poppins', color: Colors.white70, fontSize: 12)),
                                 ],
                               ),
-                            )
-                          : ListView.builder(
-                              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                              itemCount: items.length,
-                              itemBuilder: (ctx, i) => _buildCompetencyCard(items[i]),
-                            ),
-                    ),
-                  ],
-                );
-              }).toList(),
+                              const SizedBox(height: 10),
+                              LinearProgressIndicator(
+                                value: items.isEmpty ? 0 : completed / items.length,
+                                backgroundColor: Colors.white24,
+                                valueColor: const AlwaysStoppedAnimation<Color>(Colors.white),
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                            ],
+                          ),
+                        ),
+                      
+                      // List items
+                      Expanded(
+                        child: items.isEmpty
+                            ? Center(
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(Icons.book_outlined, size: 64, color: AppColors.textGrey.withOpacity(0.4)),
+                                    const SizedBox(height: 12),
+                                    Text('Tidak ada kompetensi di tahap ini',
+                                        style: TextStyle(color: AppColors.textGrey, fontFamily: 'Poppins')),
+                                  ],
+                                ),
+                              )
+                            : ListView.builder(
+                                padding: const EdgeInsets.symmetric(horizontal: 16),
+                                itemCount: items.length,
+                                itemBuilder: (ctx, i) => InkWell(
+                                  onTap: () => _handleCompetencyTap(items[i]),
+                                  child: _buildCompetencyCard(items[i]),
+                                ),
+                              ),
+                      ),
+                    ],
+                  );
+                }).toList(),
+              ),
             ),
     );
   }

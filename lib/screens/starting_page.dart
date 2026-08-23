@@ -203,13 +203,16 @@ class _StartingPageState extends State<StartingPage>
                                                   AppColors.primaryLight.withValues(alpha: 0.6)
                                                 ],
                                               ).createShader(bounds),
-                                              child: Text(
-                                                'PathoEngage',
-                                                style: TextStyle(fontFamily: 'Poppins', 
-                                                  fontSize: 48,
-                                                  fontWeight: FontWeight.bold,
-                                                  color: Colors.white,
-                                                  letterSpacing: 1.2,
+                                              child: FittedBox(
+                                                fit: BoxFit.scaleDown,
+                                                child: Text(
+                                                  'PathoEngage',
+                                                  style: TextStyle(fontFamily: 'Poppins', 
+                                                    fontSize: 48,
+                                                    fontWeight: FontWeight.bold,
+                                                    color: Colors.white,
+                                                    letterSpacing: 1.2,
+                                                  ),
                                                 ),
                                               ),
                                             ),
@@ -263,6 +266,7 @@ class _StartingPageState extends State<StartingPage>
                             opacity: _buttonAnimation.value.clamp(0.0, 1.0),
                             child: Column(
                               children: [
+                                const SizedBox(height: 16),
                                 // Login Button
                                 Container(
                                   width: double.infinity,

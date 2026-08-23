@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:fp_pemrograman/colors.dart';
 import 'package:fp_pemrograman/service/auth_service.dart';
 import 'package:fp_pemrograman/screens/login_screen.dart';
+import 'package:fp_pemrograman/widgets/responsive_wrapper.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -90,8 +91,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ? const Center(child: CircularProgressIndicator())
           : _user == null
               ? const Center(child: Text('Gagal memuat data profil'))
-              : SingleChildScrollView(
-                  child: Column(
+              : ResponsiveWrapper(
+                  child: SingleChildScrollView(
+                    child: Column(
                     children: [
                       // Header gradient card
                       Container(
@@ -202,6 +204,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ],
                   ),
                 ),
+              ),
     );
   }
 

@@ -7,6 +7,7 @@ import 'package:fp_pemrograman/screens/exams_screen.dart';
 import 'package:fp_pemrograman/screens/academic_screen.dart';
 import 'package:fp_pemrograman/screens/rotations_screen.dart';
 import 'package:fp_pemrograman/screens/profile_screen.dart';
+import 'package:fp_pemrograman/widgets/responsive_wrapper.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -76,13 +77,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
     return RefreshIndicator(
       onRefresh: () async => _loadData(),
-      child: SingleChildScrollView(
-        physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Greeting + profile card
+      child: ResponsiveWrapper(
+        child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Greeting + profile card
             Container(
               padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
@@ -170,43 +172,47 @@ class _DashboardScreenState extends State<DashboardScreen> {
             // Menu utama
             const Text('Menu Utama', style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold, fontSize: 16)),
             const SizedBox(height: 12),
-            GridView.count(
-              crossAxisCount: 2,
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              crossAxisSpacing: 12,
-              mainAxisSpacing: 12,
-              childAspectRatio: 1.2,
-              children: [
-                _buildMenuCard(
-                  icon: Icons.book,
-                  title: 'Logbook\nKompetensi',
-                  subtitle: '$_completedCompetencies dari $_totalCompetencies',
-                  color: AppColors.primaryPurple,
-                  onTap: () => setState(() => _selectedIndex = 1),
-                ),
-                _buildMenuCard(
-                  icon: Icons.school,
-                  title: 'Ujian',
-                  subtitle: '$_passedExams lulus',
-                  color: const Color(0xFF2980B9),
-                  onTap: () => setState(() => _selectedIndex = 2),
-                ),
-                _buildMenuCard(
-                  icon: Icons.article,
-                  title: 'Tugas\nAkademik',
-                  subtitle: '$_pendingTasks pending',
-                  color: const Color(0xFF8E44AD),
-                  onTap: () => setState(() => _selectedIndex = 3),
-                ),
-                _buildMenuCard(
-                  icon: Icons.local_hospital,
-                  title: 'Stase\nLuar',
-                  subtitle: 'Lihat jadwal',
-                  color: const Color(0xFF16A085),
-                  onTap: () => setState(() => _selectedIndex = 4),
-                ),
-              ],
+            LayoutBuilder(
+              builder: (context, constraints) {
+                return GridView.count(
+                  crossAxisCount: constraints.maxWidth > 600 ? 4 : 2,
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  crossAxisSpacing: 12,
+                  mainAxisSpacing: 12,
+                  childAspectRatio: constraints.maxWidth > 600 ? 1.5 : 1.2,
+                  children: [
+                    _buildMenuCard(
+                      icon: Icons.book,
+                      title: 'Logbook\nKompetensi',
+                      subtitle: '$_completedCompetencies dari $_totalCompetencies',
+                      color: AppColors.primaryPurple,
+                      onTap: () => setState(() => _selectedIndex = 1),
+                    ),
+                    _buildMenuCard(
+                      icon: Icons.school,
+                      title: 'Ujian',
+                      subtitle: '$_passedExams lulus',
+                      color: const Color(0xFF2980B9),
+                      onTap: () => setState(() => _selectedIndex = 2),
+                    ),
+                    _buildMenuCard(
+                      icon: Icons.article,
+                      title: 'Tugas\nAkademik',
+                      subtitle: '$_pendingTasks pending',
+                      color: const Color(0xFF8E44AD),
+                      onTap: () => setState(() => _selectedIndex = 3),
+                    ),
+                    _buildMenuCard(
+                      icon: Icons.local_hospital,
+                      title: 'Stase\nLuar',
+                      subtitle: 'Lihat jadwal',
+                      color: const Color(0xFF16A085),
+                      onTap: () => setState(() => _selectedIndex = 4),
+                    ),
+                  ],
+                );
+              }
             ),
 
             const SizedBox(height: 24),
@@ -216,8 +222,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ],
         ),
       ),
-    );
-  }
+    ),
+  );
+}
 
   Widget _buildStatCard(String label, String value, IconData icon, Color color) {
     return Container(
@@ -450,21 +457,49 @@ class _DashboardScreenState extends State<DashboardScreen> {
               ],
             )
           : null,
-      body: _selectedIndex == 0 ? _buildHomeContent() : _screens[_selectedIndex],
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: _selectedIndex,
-        onDestinationSelected: (i) => setState(() => _selectedIndex = i),
-        backgroundColor: Colors.white,
-        indicatorColor: AppColors.primaryPurple.withOpacity(0.15),
-        labelBehavior: NavigationDestinationLabelBehavior.onlyShowSelected,
-        destinations: const [
-          NavigationDestination(icon: Icon(Icons.home_outlined), selectedIcon: Icon(Icons.home), label: 'Beranda'),
-          NavigationDestination(icon: Icon(Icons.book_outlined), selectedIcon: Icon(Icons.book), label: 'Logbook'),
-          NavigationDestination(icon: Icon(Icons.school_outlined), selectedIcon: Icon(Icons.school), label: 'Ujian'),
-          NavigationDestination(icon: Icon(Icons.article_outlined), selectedIcon: Icon(Icons.article), label: 'Akademik'),
-          NavigationDestination(icon: Icon(Icons.local_hospital_outlined), selectedIcon: Icon(Icons.local_hospital), label: 'Stase'),
-        ],
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          if (constraints.maxWidth > 800) {
+            return Row(
+              children: [
+                NavigationRail(
+                  selectedIndex: _selectedIndex,
+                  onDestinationSelected: (i) => setState(() => _selectedIndex = i),
+                  labelType: NavigationRailLabelType.all,
+                  selectedIconTheme: IconThemeData(color: AppColors.primaryPurple),
+                  selectedLabelTextStyle: TextStyle(color: AppColors.primaryPurple, fontWeight: FontWeight.bold, fontFamily: 'Poppins'),
+                  destinations: const [
+                    NavigationRailDestination(icon: Icon(Icons.home_outlined), selectedIcon: Icon(Icons.home), label: Text('Beranda')),
+                    NavigationRailDestination(icon: Icon(Icons.book_outlined), selectedIcon: Icon(Icons.book), label: Text('Logbook')),
+                    NavigationRailDestination(icon: Icon(Icons.school_outlined), selectedIcon: Icon(Icons.school), label: Text('Ujian')),
+                    NavigationRailDestination(icon: Icon(Icons.article_outlined), selectedIcon: Icon(Icons.article), label: Text('Akademik')),
+                    NavigationRailDestination(icon: Icon(Icons.local_hospital_outlined), selectedIcon: Icon(Icons.local_hospital), label: Text('Stase')),
+                  ],
+                ),
+                const VerticalDivider(thickness: 1, width: 1),
+                Expanded(child: _selectedIndex == 0 ? _buildHomeContent() : _screens[_selectedIndex]),
+              ],
+            );
+          }
+          return _selectedIndex == 0 ? _buildHomeContent() : _screens[_selectedIndex];
+        },
       ),
+      bottomNavigationBar: MediaQuery.of(context).size.width <= 800
+          ? NavigationBar(
+              selectedIndex: _selectedIndex,
+              onDestinationSelected: (i) => setState(() => _selectedIndex = i),
+              backgroundColor: Colors.white,
+              indicatorColor: AppColors.primaryPurple.withOpacity(0.15),
+              labelBehavior: NavigationDestinationLabelBehavior.onlyShowSelected,
+              destinations: const [
+                NavigationDestination(icon: Icon(Icons.home_outlined), selectedIcon: Icon(Icons.home), label: 'Beranda'),
+                NavigationDestination(icon: Icon(Icons.book_outlined), selectedIcon: Icon(Icons.book), label: 'Logbook'),
+                NavigationDestination(icon: Icon(Icons.school_outlined), selectedIcon: Icon(Icons.school), label: 'Ujian'),
+                NavigationDestination(icon: Icon(Icons.article_outlined), selectedIcon: Icon(Icons.article), label: 'Akademik'),
+                NavigationDestination(icon: Icon(Icons.local_hospital_outlined), selectedIcon: Icon(Icons.local_hospital), label: 'Stase'),
+              ],
+            )
+          : null,
     );
   }
 }
