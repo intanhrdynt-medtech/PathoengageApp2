@@ -15,7 +15,7 @@ class _ExamsScreenState extends State<ExamsScreen> with SingleTickerProviderStat
   bool _isLoading = true;
   late TabController _tabController;
 
-  final List<String> _tabs = ['Semua', 'Lokal', 'Nasional Tahap 1', 'Board/Tahap 2'];
+  final List<String> _tabs = ['Semua', 'Lokal', 'Nasional'];
 
   @override
   void initState() {
@@ -98,16 +98,20 @@ class _ExamsScreenState extends State<ExamsScreen> with SingleTickerProviderStat
         : null;
 
     Color statusColor = Colors.grey;
-    IconData statusIcon = Icons.hourglass_empty;
     String statusLabel = 'Terjadwal';
     if (isPassed) {
       statusColor = AppColors.successGreen;
-      statusIcon = Icons.check_circle;
       statusLabel = 'Lulus';
     } else if (isFailed) {
       statusColor = AppColors.accentRed;
-      statusIcon = Icons.cancel;
       statusLabel = 'Tidak Lulus';
+    }
+
+    Color phaseColor = AppColors.textGrey;
+    switch (exam['phase_category']?.toString().toLowerCase()) {
+      case 'red': phaseColor = Colors.red.shade600; break;
+      case 'yellow': phaseColor = Colors.orange.shade600; break;
+      case 'green': phaseColor = Colors.green.shade600; break;
     }
 
     return Container(
@@ -124,10 +128,10 @@ class _ExamsScreenState extends State<ExamsScreen> with SingleTickerProviderStat
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: statusColor.withOpacity(0.12),
+                color: phaseColor.withOpacity(0.12),
                 shape: BoxShape.circle,
               ),
-              child: Icon(statusIcon, color: statusColor, size: 28),
+              child: Icon(Icons.school, color: phaseColor, size: 28),
             ),
             const SizedBox(width: 14),
             Expanded(
