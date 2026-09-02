@@ -3,8 +3,8 @@ import 'package:fp_pemrograman/colors.dart';
 import 'package:fp_pemrograman/service/api_service.dart';
 import 'package:fp_pemrograman/widgets/responsive_wrapper.dart';
 import 'package:intl/intl.dart';
-import 'package:file_picker/file_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
+
 
 class AcademicScreen extends StatefulWidget {
   const AcademicScreen({super.key});
@@ -17,6 +17,49 @@ class _AcademicScreenState extends State<AcademicScreen> with SingleTickerProvid
   List<dynamic> _tasks = [];
   bool _isLoading = true;
   late TabController _tabController;
+
+  final List<Map<String, String>> _textbooks = [
+    {
+      'title': 'Classification of Tumor',
+      'url': 'https://tumourclassification.iarc.who.int/home',
+      'image': 'assets/images/classification of tumor.png'
+    },
+    {
+      'title': 'Pathologic Basic of Disease',
+      'url': 'https://shop.elsevier.com/books/robbins-cotran-and-kumar-pathologic-basis-of-disease/kumar/978-0-443-26452-',
+      'image': 'assets/images/Pathologic Basic of Disease.jpg'
+    },
+    {
+      'title': 'Basic Pathology',
+      'url': 'https://shop.elsevier.com/books/robbins-and-kumar-basic-pathology/kumar/978-0-323-79018-5',
+      'image': 'assets/images/Basic Patology.jpg'
+    },
+    {
+      'title': "Enzinger and Weiss's Soft Tissue Tumors",
+      'url': 'https://shop.elsevier.com/books/enzinger-and-weisss-soft-tissue-tumors/goldblum/978-0-323-61096-4',
+      'image': 'assets/images/Enzinger and Weiss\'s Soft Tissue Tumors.jpg'
+    },
+    {
+      'title': 'Cibas and Ducatman’s Cytology',
+      'url': 'https://shop.elsevier.com/books/cibas-and-ducatman-s-cytology/cibas/978-0-323-93434-3',
+      'image': 'assets/images/Cibas and Ducatman\'s Cytology.jpg'
+    },
+    {
+      'title': 'Pathology',
+      'url': 'https://innocentbalti.wordpress.com/wp-content/uploads/2015/01/harsh-mohan-textbook-of-pathology-6th-ed.pdf',
+      'image': 'assets/images/Pathology.png'
+    },
+    {
+      'title': "Silva's Diagnostic Renal Pathology",
+      'url': 'https://www.amazon.com/Silvas-Diagnostic-Renal-Pathology-Joseph/dp/1316613984',
+      'image': 'assets/images/Silva\'s Diagnostic Renal Pathology.jpg'
+    },
+    {
+      'title': "Weedon's Skin Pathology",
+      'url': 'https://www.sciencedirect.com/book/monograph/9780702034855/weedons-skin-pathology',
+      'image': 'assets/images/Weedon\'s Skin Pathology.jpg'
+    },
+  ];
 
   // Sesuai requirement: 3 pilar tugas akademik + tugas tambahan
   final List<String> _categories = ['Semua', 'Textbook Reading', 'Journal Reading', 'Tugas Ilmiah', 'Penelitian', 'Publikasi', 'Etik'];
@@ -91,6 +134,7 @@ class _AcademicScreenState extends State<AcademicScreen> with SingleTickerProvid
               child: TabBarView(
                 controller: _tabController,
                 children: _categories.map((cat) {
+                  // Standard Task View Fallback for all categories
                   final tasks = _filterTasks(cat);
                   if (tasks.isEmpty) {
                     return Center(
@@ -99,7 +143,7 @@ class _AcademicScreenState extends State<AcademicScreen> with SingleTickerProvid
                         children: [
                           Icon(Icons.inbox_outlined, size: 64, color: AppColors.textGrey.withOpacity(0.4)),
                           const SizedBox(height: 12),
-                          Text('Tidak ada tugas di kategori ini',
+                          const Text('Tidak ada tugas di kategori ini',
                               style: TextStyle(color: AppColors.textGrey, fontFamily: 'Poppins')),
                         ],
                       ),
@@ -126,10 +170,8 @@ class _AcademicScreenState extends State<AcademicScreen> with SingleTickerProvid
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Tugas ini sudah selesai.')));
       return;
     }
-    if (currentStatus == 'pending_verification') {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Menunggu verifikasi admin.')));
-      return;
-    }
+    // Remove the early return for pending_verification so they can edit it
+
 
     if (task['task_type'] == 'Textbook Reading' || task['task_type'] == 'Journal Reading') {
       _showNotesDialog(task);
@@ -139,65 +181,22 @@ class _AcademicScreenState extends State<AcademicScreen> with SingleTickerProvid
   }
 
   Future<void> _showFileUpload(Map<String, dynamic> task) async {
-    try {
-      final result = await FilePicker.platform.pickFiles(type: FileType.custom, allowedExtensions: ['pdf', 'jpg', 'png']);
-      if (result != null && result.files.isNotEmpty) {
-        final file = result.files.first;
-        final mockUrl = 'https://storage.pathoengage.com/evidence/${file.name}';
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Mengunggah dokumen...')));
-        
-        final success = await _api.updateAcademicEvidence(task['id'], 'pending_verification', mockUrl);
-        if (success) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Dokumen diunggah. Menunggu verifikasi.')));
-          _loadTasks();
-        } else {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Gagal mengunggah dokumen.')));
-        }
-      }
-    } catch (e) {
-      debugPrint("File picker error: $e");
-    }
-  }
-
-  Future<void> _showNotesDialog(Map<String, dynamic> task) async {
-    final TextEditingController _notesController = TextEditingController();
+    final TextEditingController _urlController = TextEditingController();
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-        title: const Text('Submit Notes', style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold, fontSize: 22)),
+        title: const Text('Kirim Bukti Tugas', style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold, fontSize: 20)),
         contentPadding: const EdgeInsets.only(left: 24, right: 24, top: 16, bottom: 8),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            if (task['link_url'] != null)
-              ElevatedButton.icon(
-                onPressed: () async {
-                  final uri = Uri.parse(task['link_url']);
-                  if (await canLaunchUrl(uri)) {
-                    await launchUrl(uri, mode: LaunchMode.externalApplication);
-                  }
-                },
-                icon: const Icon(Icons.open_in_new, size: 20),
-                label: const FittedBox(
-                  fit: BoxFit.scaleDown,
-                  child: Text('Buka Referensi Jurnal/Buku', style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.w600)),
-                ),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.primaryPurple,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                ),
-              ),
-            if (task['link_url'] != null) const SizedBox(height: 20),
             TextField(
-              controller: _notesController,
-              maxLines: 4,
+              controller: _urlController,
               style: const TextStyle(fontFamily: 'Poppins', fontSize: 14),
               decoration: InputDecoration(
-                hintText: 'Tulis ringkasan / resume bacaan di sini...',
+                hintText: 'Tempel link Google Drive di sini...',
                 hintStyle: TextStyle(fontFamily: 'Poppins', fontSize: 13, color: AppColors.textGrey),
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                 contentPadding: const EdgeInsets.all(16),
@@ -208,30 +207,143 @@ class _AcademicScreenState extends State<AcademicScreen> with SingleTickerProvid
         actionsPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(ctx), 
+            onPressed: () => Navigator.pop(ctx),
             style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10)),
             child: Text('Batal', style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.w600, color: AppColors.textGrey))
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.primaryPurple, 
+              backgroundColor: AppColors.primaryPurple,
               foregroundColor: Colors.white,
               padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             ),
             onPressed: () async {
-              if (_notesController.text.trim().isEmpty) return;
+              if (_urlController.text.trim().isEmpty) return;
               Navigator.pop(ctx);
-              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Menyimpan notes...')));
-              final success = await _api.updateAcademicNotes(task['id'], 'pending_verification', _notesController.text.trim());
+              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Mengirim bukti...')));
+              final success = await _api.updateAcademicEvidence(task['id'], 'pending_verification', _urlController.text.trim());
               if (success) {
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Notes berhasil disubmit.')));
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Bukti terkirim. Menunggu verifikasi.')));
                 _loadTasks();
+              } else {
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Gagal mengirim bukti.')));
               }
             },
-            child: const Text('Submit', style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold)),
+            child: const Text('Kirim', style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold)),
           ),
         ],
+      ),
+    );
+  }
+
+  Future<void> _showNotesDialog(Map<String, dynamic> task) async {
+    final currentStatus = task['status'] ?? 'not_started';
+    final isPending = currentStatus == 'pending_verification';
+
+    final TextEditingController _notesController = TextEditingController(text: task['notes'] ?? '');
+    final TextEditingController _urlController = TextEditingController(text: task['link_url'] ?? '');
+    bool isSubmitting = false;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDlg) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+          title: Text(isPending ? 'Edit Submit' : 'Submit Tugas', style: const TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold, fontSize: 22)),
+          contentPadding: const EdgeInsets.only(left: 24, right: 24, top: 16, bottom: 8),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (isPending)
+                  Container(
+                    margin: const EdgeInsets.only(bottom: 16),
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(color: Colors.orange.shade50, borderRadius: BorderRadius.circular(8)),
+                    child: const Text('Menunggu verifikasi admin. Anda masih bisa mengubah data jika ada revisi.',
+                        style: TextStyle(fontFamily: 'Poppins', fontSize: 12, color: Colors.orange)),
+                  ),
+                const Text('Link Referensi (opsional):', style: TextStyle(fontFamily: 'Poppins', fontSize: 13, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 6),
+                TextField(
+                  controller: _urlController,
+                  style: const TextStyle(fontFamily: 'Poppins', fontSize: 13),
+                  decoration: InputDecoration(
+                    hintText: 'https://...',
+                    prefixIcon: const Icon(Icons.link, size: 18),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  ),
+                ),
+                if (task['link_url'] != null && task['link_url'].toString().isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  ElevatedButton.icon(
+                    onPressed: () async {
+                      final uri = Uri.parse(task['link_url']);
+                      await launchUrl(uri, mode: LaunchMode.externalApplication);
+                    },
+                    icon: const Icon(Icons.open_in_new, size: 16),
+                    label: const Text('Buka Referensi Saat Ini'),
+                    style: ElevatedButton.styleFrom(backgroundColor: AppColors.primaryPurple.withOpacity(0.1), foregroundColor: AppColors.primaryPurple, elevation: 0),
+                  ),
+                ],
+                const SizedBox(height: 16),
+                const Text('Ringkasan / Resume *:', style: TextStyle(fontFamily: 'Poppins', fontSize: 13, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 6),
+                TextField(
+                  controller: _notesController,
+                  maxLines: 4,
+                  style: const TextStyle(fontFamily: 'Poppins', fontSize: 13),
+                  decoration: InputDecoration(
+                    hintText: 'Tulis ringkasan bacaan di sini...',
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                    contentPadding: const EdgeInsets.all(16),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actionsPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx), 
+              child: Text('Batal', style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.w600, color: AppColors.textGrey))
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: isPending ? Colors.orange : AppColors.primaryPurple, 
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+              onPressed: isSubmitting ? null : () async {
+                if (_notesController.text.trim().isEmpty) {
+                  ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(content: Text('Resume tidak boleh kosong!')));
+                  return;
+                }
+                setDlg(() => isSubmitting = true);
+                
+                bool successNotes = await _api.updateAcademicNotes(task['id'], 'pending_verification', _notesController.text.trim());
+                if (_urlController.text.trim().isNotEmpty) {
+                  await _api.updateAcademicEvidence(task['id'], 'pending_verification', _urlController.text.trim());
+                }
+                
+                setDlg(() => isSubmitting = false);
+                if (mounted) Navigator.pop(ctx);
+                
+                if (successNotes) {
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Tugas berhasil disubmit/diubah!')));
+                  _loadTasks();
+                }
+              },
+              child: isSubmitting 
+                  ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                  : Text(isPending ? 'Simpan Edit' : 'Submit', style: const TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold)),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -247,6 +359,12 @@ class _AcademicScreenState extends State<AcademicScreen> with SingleTickerProvid
         !isDone &&
         DateTime.parse(task['deadline']).isBefore(DateTime.now());
 
+    final book = _textbooks.firstWhere(
+      (b) => b['title'] == task['title'],
+      orElse: () => <String, String>{},
+    );
+    final hasBookImage = book.isNotEmpty && book['image'] != null;
+
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
@@ -261,12 +379,16 @@ class _AcademicScreenState extends State<AcademicScreen> with SingleTickerProvid
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Container(
-              padding: const EdgeInsets.all(10),
+              width: 48,
+              height: 48,
+              padding: hasBookImage ? EdgeInsets.zero : const EdgeInsets.all(10),
               decoration: BoxDecoration(
                 color: color.withOpacity(0.12),
                 borderRadius: BorderRadius.circular(12),
+                image: hasBookImage ? DecorationImage(image: AssetImage(book['image']!), fit: BoxFit.cover) : null,
+                boxShadow: hasBookImage ? [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 4, offset: const Offset(0, 2))] : null,
               ),
-              child: Icon(icon, color: color, size: 24),
+              child: hasBookImage ? null : Icon(icon, color: color, size: 24),
             ),
             const SizedBox(width: 14),
             Expanded(

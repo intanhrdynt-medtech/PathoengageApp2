@@ -5,7 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 class AuthService {
   // Use Vercel Backend
-  final String baseUrl = 'https://pathoengage-backend.vercel.app'; 
+  final String baseUrl = 'https://backend-ten-puce-60.vercel.app'; 
   
   Future<String?> getToken() async {
     final prefs = await SharedPreferences.getInstance();
@@ -47,17 +47,17 @@ class AuthService {
         await prefs.setString('jwt_token', data['token']);
         return data['user'];
       } else {
-        debugPrint(data['error']);
+        debugPrint(data['error']?.toString());
         return {
           'success': false,
-          'message': data['error'] ?? 'Email atau password salah'
+          'message': data['error'] != null ? data['error'].toString() : 'Email atau password salah'
         };
       }
     } catch (e) {
       debugPrint('Login Error: $e');
       return {
         'success': false,
-        'message': 'Error: $e'
+        'message': 'Error: ${e.toString()}'
       };
     }
   }
@@ -78,7 +78,7 @@ class AuthService {
 
       final data = jsonDecode(response.body);
 
-      if (response.statusCode == 200) {
+      if (response.statusCode == 200 || response.statusCode == 201) {
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString('jwt_token', data['token']);
         return {'success': true, 'user': data['user'], 'message': 'Registration successful'};
@@ -86,7 +86,7 @@ class AuthService {
         return {
           'success': false,
           'user': null,
-          'message': data['error'] ?? 'Registration failed',
+          'message': data['error'] != null ? data['error'].toString() : 'Registration failed',
         };
       }
     } catch (e) {
@@ -94,7 +94,7 @@ class AuthService {
       return {
         'success': false,
         'user': null,
-        'message': 'Registration Error: $e',
+        'message': 'Registration Error: ${e.toString()}',
       };
     }
   }

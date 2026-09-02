@@ -21,10 +21,21 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     const AdminUsersScreen(),
   ];
 
+  final List<BottomNavigationBarItem> _navItems = const [
+    BottomNavigationBarItem(
+      icon: Icon(Icons.pending_actions),
+      activeIcon: Icon(Icons.pending_actions),
+      label: 'Verifikasi',
+    ),
+    BottomNavigationBarItem(
+      icon: Icon(Icons.people_outline),
+      activeIcon: Icon(Icons.people),
+      label: 'Manajemen PPDS',
+    ),
+  ];
+
   void _onItemTapped(int index) {
-    setState(() {
-      _selectedIndex = index;
-    });
+    setState(() => _selectedIndex = index);
   }
 
   Future<void> _logout() async {
@@ -36,36 +47,54 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     );
   }
 
+  String get _pageTitle {
+    switch (_selectedIndex) {
+      case 0: return 'Verifikasi Pengajuan';
+      case 1: return 'Manajemen PPDS';
+      default: return 'Admin Dashboard';
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Admin Dashboard', style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold)),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Admin PathoEngage',
+              style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold, fontSize: 16),
+            ),
+            Text(
+              _pageTitle,
+              style: const TextStyle(fontFamily: 'Poppins', fontSize: 11, fontWeight: FontWeight.normal),
+            ),
+          ],
+        ),
         backgroundColor: AppColors.primaryPurple,
         foregroundColor: Colors.white,
+        elevation: 0,
         actions: [
           IconButton(
             icon: const Icon(Icons.logout),
+            tooltip: 'Logout',
             onPressed: _logout,
           ),
         ],
       ),
-      body: _screens[_selectedIndex],
+      body: IndexedStack(
+        index: _selectedIndex,
+        children: _screens,
+      ),
       bottomNavigationBar: BottomNavigationBar(
-        items: const <BottomNavigationBarItem>[
-          BottomNavigationBarItem(
-            icon: Icon(Icons.verified),
-            label: 'Verifications',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.people),
-            label: 'Users',
-          ),
-        ],
+        items: _navItems,
         currentIndex: _selectedIndex,
-        selectedItemColor: AppColors.accentRed,
+        selectedItemColor: AppColors.primaryPurple,
         unselectedItemColor: Colors.grey,
+        selectedLabelStyle: const TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold),
         onTap: _onItemTapped,
+        type: BottomNavigationBarType.fixed,
       ),
     );
   }

@@ -43,3 +43,23 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Environment & secrets
+.env
+.env.*
+backend/.env
+backend/.env.*
+
+# Database files
+*.db
+instance/
+backend/instance/
+
+# Binary archives
+ngrok.zip
+
+# Python
+__pycache__/
+*.pyc
+venv/
+.venv/

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:fp_pemrograman/colors.dart';
+import 'package:fp_pemrograman/service/academic_task_url.dart';
 import 'package:fp_pemrograman/service/api_service.dart';
-import 'package:fp_pemrograman/widgets/responsive_wrapper.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 class AdminVerificationScreen extends StatefulWidget {
@@ -31,122 +31,296 @@ class _AdminVerificationScreenState extends State<AdminVerificationScreen> {
     });
   }
 
-  Future<void> _verifyTask(String typeCategory, int id) async {
-    final success = await _api.verifyTask(typeCategory, id, 'completed');
+  Future<void> _verifyItem(String typeCategory, int id, String action) async {
+    final success = await _api.verifyTask(typeCategory, id, action);
     if (success) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Berhasil diverifikasi!')));
+        final msg = action == 'approve' ? 'Berhasil diverifikasi! ✅' : 'Pengajuan ditolak ❌';
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
         _loadData();
       }
     } else {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Gagal memverifikasi')));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('Gagal memproses permintaan')));
       }
     }
   }
 
+  IconData _getCategoryIcon(String? category) {
+    switch (category) {
+      case 'exam': return Icons.quiz;
+      case 'academic': return Icons.assignment;
+      case 'competency': return Icons.star;
+      default: return Icons.task;
+    }
+  }
+
+  Color _getCategoryColor(String? category) {
+    switch (category) {
+      case 'exam': return Colors.purple;
+      case 'academic': return Colors.blue;
+      case 'competency': return Colors.orange;
+      default: return AppColors.primaryPurple;
+    }
+  }
+
+  String _getCategoryLabel(String? category) {
+    switch (category) {
+      case 'exam': return 'Ujian';
+      case 'academic': return 'Tugas Akademik';
+      case 'competency': return 'Kompetensi';
+      default: return category ?? '-';
+    }
+  }
+
   void _showDetailsDialog(Map<String, dynamic> item) {
+    final catColor = _getCategoryColor(item['type_category']);
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text('Detail Tugas', style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Row(
+          children: [
+            CircleAvatar(
+              backgroundColor: catColor.withOpacity(0.15),
+              radius: 18,
+              child: Icon(_getCategoryIcon(item['type_category']), color: catColor, size: 18),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text('Detail Pengajuan',
+                  style: const TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold)),
+            ),
+          ],
+        ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Oleh: ${item['user_name']}', style: const TextStyle(fontWeight: FontWeight.bold)),
+            _detailRow(Icons.person, 'PPDS', item['user_name'] ?? '-'),
             const SizedBox(height: 8),
-            Text('Kategori: ${item['type_category']}'),
-            if (item['title'] != null) Text('Judul: ${item['title']}'),
-            if (item['exam_name'] != null) Text('Ujian: ${item['exam_name']}'),
-            if (item['competency_name'] != null) Text('Kompetensi: ${item['competency_name']}'),
+            _detailRow(Icons.category, 'Kategori', _getCategoryLabel(item['type_category'])),
+            const SizedBox(height: 8),
+            if (item['title'] != null)
+              _detailRow(Icons.title, 'Judul', item['title']),
+            if (item['exam_name'] != null)
+              _detailRow(Icons.quiz, 'Ujian', item['exam_name']),
+            if (item['competency_name'] != null)
+              _detailRow(Icons.star, 'Kompetensi', item['competency_name']),
             if (item['notes'] != null && item['notes'].toString().isNotEmpty) ...[
-              const SizedBox(height: 12),
-              const Text('Notes:', style: TextStyle(fontWeight: FontWeight.bold)),
-              Text(item['notes']),
+              const SizedBox(height: 8),
+              _detailRow(Icons.notes, 'Catatan', item['notes']),
             ],
             const SizedBox(height: 16),
             if (item['document_proof_url'] != null || item['evidence_url'] != null)
-              ElevatedButton.icon(
-                onPressed: () async {
-                  final url = item['document_proof_url'] ?? item['evidence_url'];
-                  if (url != null) {
-                    final uri = Uri.parse(url);
-                    if (await canLaunchUrl(uri)) {
-                      await launchUrl(uri, mode: LaunchMode.externalApplication);
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: () async {
+                    final url = (item['document_proof_url'] ?? item['evidence_url']) as String?;
+                    if (url == null || !isUsableEvidenceUrl(url)) {
+                      if (ctx.mounted) {
+                        ScaffoldMessenger.of(ctx).showSnackBar(
+                          const SnackBar(content: Text('Link bukti tidak valid atau belum tersedia.')),
+                        );
+                      }
+                      return;
                     }
-                  }
-                },
-                icon: const Icon(Icons.download),
-                label: const Text('Lihat Bukti Lampiran'),
+
+                    try {
+                      final uri = Uri.parse(url);
+                      await launchUrl(uri, mode: LaunchMode.externalApplication);
+                    } catch (e) {
+                      if (ctx.mounted) {
+                        ScaffoldMessenger.of(ctx).showSnackBar(
+                          SnackBar(content: Text('Tidak bisa membuka bukti: $url')),
+                        );
+                      }
+                    }
+                  },
+                  icon: const Icon(Icons.open_in_browser),
+                  label: const Text('Buka Link Lampiran (Drive)'),
+                ),
               )
             else
-              const Text('Tidak ada lampiran', style: TextStyle(color: Colors.red)),
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: Colors.red.shade50,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Row(
+                  children: [
+                    Icon(Icons.warning, color: Colors.red, size: 16),
+                    SizedBox(width: 6),
+                    Text('Tidak ada lampiran bukti', style: TextStyle(color: Colors.red, fontSize: 13)),
+                  ],
+                ),
+              ),
           ],
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Batal')),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.green, foregroundColor: Colors.white),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Tutup'),
+          ),
+          OutlinedButton(
+            style: OutlinedButton.styleFrom(foregroundColor: Colors.red),
             onPressed: () {
               Navigator.pop(ctx);
-              _verifyTask(item['type_category'], item['id']);
+              _verifyItem(item['type_category'], item['id'], 'reject');
             },
-            child: const Text('Verifikasi'),
+            child: const Text('Tolak'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.green, foregroundColor: Colors.white),
+            onPressed: () {
+              Navigator.pop(ctx);
+              _verifyItem(item['type_category'], item['id'], 'approve');
+            },
+            child: const Text('Setujui ✓'),
           ),
         ],
       ),
     );
   }
 
+  Widget _detailRow(IconData icon, String label, String value) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, size: 16, color: Colors.grey),
+        const SizedBox(width: 8),
+        Expanded(
+          child: RichText(
+            text: TextSpan(
+              style: const TextStyle(color: Colors.black87, fontSize: 13),
+              children: [
+                TextSpan(
+                    text: '$label: ',
+                    style: const TextStyle(fontWeight: FontWeight.bold)),
+                TextSpan(text: value),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    return _isLoading
-        ? const Center(child: CircularProgressIndicator())
-        : ResponsiveWrapper(
-            child: _pendingItems.isEmpty
-                ? Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.check_circle_outline, size: 64, color: AppColors.textGrey.withOpacity(0.5)),
-                        const SizedBox(height: 12),
-                        Text('Semua tugas sudah diverifikasi', style: TextStyle(color: AppColors.textGrey, fontFamily: 'Poppins')),
-                      ],
-                    ),
-                  )
-                : ListView.builder(
-                    padding: const EdgeInsets.all(16),
-                    itemCount: _pendingItems.length,
-                    itemBuilder: (context, index) {
-                      final item = _pendingItems[index];
-                      String title = item['title'] ?? item['exam_name'] ?? item['competency_name'] ?? 'Task';
-                      
-                      return Card(
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                        elevation: 2,
-                        margin: const EdgeInsets.only(bottom: 12),
-                        child: ListTile(
-                          contentPadding: const EdgeInsets.all(16),
-                          title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontFamily: 'Poppins')),
-                          subtitle: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const SizedBox(height: 4),
-                              Text('PPDS: ${item['user_name']}'),
-                              Text('Tipe: ${item['type_category']}'),
-                            ],
-                          ),
-                          trailing: ElevatedButton(
-                            style: ElevatedButton.styleFrom(backgroundColor: AppColors.primaryPurple, foregroundColor: Colors.white),
-                            onPressed: () => _showDetailsDialog(item),
-                            child: const Text('Periksa'),
-                          ),
-                        ),
-                      );
-                    },
+    return RefreshIndicator(
+      onRefresh: _loadData,
+      child: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : _pendingItems.isEmpty
+              ? Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.check_circle_outline,
+                          size: 72, color: Colors.green.withOpacity(0.6)),
+                      const SizedBox(height: 16),
+                      const Text('Semua pengajuan sudah diproses!',
+                          style: TextStyle(
+                              fontFamily: 'Poppins',
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16)),
+                      const SizedBox(height: 8),
+                      Text('Tidak ada yang menunggu verifikasi',
+                          style: TextStyle(color: AppColors.textGrey, fontFamily: 'Poppins')),
+                      const SizedBox(height: 24),
+                      OutlinedButton.icon(
+                        onPressed: _loadData,
+                        icon: const Icon(Icons.refresh),
+                        label: const Text('Refresh'),
+                      ),
+                    ],
                   ),
-          );
+                )
+              : ListView.builder(
+                  padding: const EdgeInsets.all(16),
+                  itemCount: _pendingItems.length,
+                  itemBuilder: (context, index) {
+                    final item = _pendingItems[index];
+                    final catColor = _getCategoryColor(item['type_category']);
+                    String title = item['title'] ??
+                        item['exam_name'] ??
+                        item['competency_name'] ??
+                        'Item';
+
+                    return Card(
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14)),
+                      elevation: 2,
+                      margin: const EdgeInsets.only(bottom: 12),
+                      child: Padding(
+                        padding: const EdgeInsets.all(14),
+                        child: Row(
+                          children: [
+                            CircleAvatar(
+                              backgroundColor: catColor.withOpacity(0.15),
+                              radius: 22,
+                              child: Icon(_getCategoryIcon(item['type_category']),
+                                  color: catColor, size: 20),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(title,
+                                      style: const TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          fontFamily: 'Poppins',
+                                          fontSize: 14),
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis),
+                                  const SizedBox(height: 3),
+                                  Text('PPDS: ${item['user_name'] ?? '-'}',
+                                      style: TextStyle(
+                                          fontSize: 12, color: AppColors.textGrey)),
+                                  Container(
+                                    margin: const EdgeInsets.only(top: 4),
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 8, vertical: 2),
+                                    decoration: BoxDecoration(
+                                      color: catColor.withOpacity(0.1),
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: Text(
+                                      _getCategoryLabel(item['type_category']),
+                                      style: TextStyle(
+                                          color: catColor,
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w600),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            ElevatedButton(
+                              style: ElevatedButton.styleFrom(
+                                  backgroundColor: AppColors.primaryPurple,
+                                  foregroundColor: Colors.white,
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 12, vertical: 8),
+                                  shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(10))),
+                              onPressed: () => _showDetailsDialog(item),
+                              child: const Text('Periksa',
+                                  style: TextStyle(fontSize: 13, fontFamily: 'Poppins')),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
+    );
   }
 }
