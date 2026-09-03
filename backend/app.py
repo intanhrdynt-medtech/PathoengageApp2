@@ -85,6 +85,25 @@ def admin_required(f):
         return f(*args, **kwargs)
     return decorated
 
+def admin_or_evaluator_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        auth = request.headers.get('Authorization', '')
+        if not auth.startswith('Bearer '):
+            return jsonify({'error': 'Missing token'}), 401
+        token = auth.split(' ', 1)[1]
+        user_id = decode_token(token)
+        if not user_id:
+            return jsonify({'error': 'Invalid or expired token'}), 401
+        user = User.query.get(user_id)
+        if not user:
+            return jsonify({'error': 'User not found'}), 404
+        if user.role not in ['admin', 'penilai']:
+            return jsonify({'error': 'Admin or Penilai access required'}), 403
+        request.user = user
+        return f(*args, **kwargs)
+    return decorated
+
 
 def user_dict(user):
     return {
@@ -1060,7 +1079,7 @@ def get_all_journal_readings():
 
 
 @app.route('/admin/journal-readings', methods=['GET'])
-@admin_required
+@admin_or_evaluator_required
 def admin_list_journal_readings():
     status_filter = request.args.get('status', 'pending')
     items = JournalReadingSubmission.query.filter_by(status=status_filter).order_by(JournalReadingSubmission.created_at.desc()).all()
@@ -1068,7 +1087,7 @@ def admin_list_journal_readings():
 
 
 @app.route('/admin/journal-readings/<int:jid>/review', methods=['PATCH'])
-@admin_required
+@admin_or_evaluator_required
 def admin_review_journal(jid):
     j = JournalReadingSubmission.query.get(jid)
     if not j:
@@ -1190,7 +1209,7 @@ def get_all_penelitian():
 
 
 @app.route('/admin/penelitian/<int:pid>/status', methods=['PATCH'])
-@admin_required
+@admin_or_evaluator_required
 def admin_update_penelitian_status(pid):
     p = Penelitian.query.get(pid)
     if not p:
