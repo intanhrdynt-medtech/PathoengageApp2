@@ -1,5 +1,9 @@
 # PathoEngage API v2.1 - force redeploy 2026-09-03
+import sys
 import os
+# Ensure backend folder is in path so models.py can be imported
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
 import datetime
 from functools import wraps
 from flask import Flask, request, jsonify
