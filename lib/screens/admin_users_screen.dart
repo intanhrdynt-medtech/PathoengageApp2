@@ -574,6 +574,10 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
                                     Colors.green, () => _showAddTaskDialog(u)),
                                 _actionButton(Icons.local_hospital, 'Stase',
                                     Colors.orange, () => _showRotationsDialog(u)),
+                                _actionButton(Icons.warning_amber, 'Warning',
+                                    Colors.deepOrange, () => _showWarningDialog(u)),
+                                _actionButton(Icons.medical_services_outlined, 'Ujian Organ',
+                                    Colors.teal, () => _showAddOrganExamDialog(u)),
                                 _actionButton(Icons.edit, 'Edit', AppColors.primaryPurple,
                                     () => _showEditUserDialog(u)),
                                 _actionButton(Icons.delete_outline, 'Hapus', Colors.red,
@@ -827,4 +831,114 @@ class _AdminRotationEditScreenState extends State<AdminRotationEditScreen> {
                 ),
     );
   }
+  
+  void _showWarningDialog(Map<String, dynamic> user) {
+    bool warningActive = user['warning_active'] == true;
+    final msgCtrl = TextEditingController(text: user['warning_message'] ?? '');
+    bool isLoading = false;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: const Text('Set Warning / SP', style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SwitchListTile(
+                title: const Text('Warning Active'),
+                value: warningActive,
+                activeColor: Colors.red,
+                onChanged: (val) => setDialogState(() => warningActive = val),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: msgCtrl,
+                maxLines: 3,
+                decoration: InputDecoration(
+                  labelText: 'Pesan Peringatan',
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Batal')),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.deepOrange, foregroundColor: Colors.white),
+              onPressed: isLoading ? null : () async {
+                setDialogState(() => isLoading = true);
+                final ok = await _api.adminSetWarning(user['id'], warningActive, msgCtrl.text.trim());
+                if (ok && mounted) {
+                  Navigator.pop(ctx);
+                  _loadData();
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Warning berhasil diupdate!')));
+                } else {
+                  setDialogState(() => isLoading = false);
+                  ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(content: Text('Gagal update warning')));
+                }
+              },
+              child: isLoading ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Text('Simpan'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showAddOrganExamDialog(Map<String, dynamic> user) {
+    final namaUjianCtrl = TextEditingController();
+    final organCtrl = TextEditingController();
+    final pengujiCtrl = TextEditingController();
+    bool isLoading = false;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: const Text('Tambah Jadwal Ujian Organ', style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold)),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _dialogField(namaUjianCtrl, 'Nama Ujian', Icons.medical_services),
+                const SizedBox(height: 10),
+                _dialogField(organCtrl, 'Organ (opsional)', Icons.visibility),
+                const SizedBox(height: 10),
+                _dialogField(pengujiCtrl, 'Penguji', Icons.person_search),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Batal')),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.teal, foregroundColor: Colors.white),
+              onPressed: isLoading ? null : () async {
+                if (namaUjianCtrl.text.isEmpty) return;
+                setDialogState(() => isLoading = true);
+                final ok = await _api.adminAddOrganExam({
+                  'user_id': user['id'],
+                  'nama_ujian': namaUjianCtrl.text.trim(),
+                  'organ': organCtrl.text.trim(),
+                  'penguji': pengujiCtrl.text.trim(),
+                  'hasil': 'terjadwal'
+                });
+                if (ok && mounted) {
+                  Navigator.pop(ctx);
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Ujian Organ berhasil dijadwalkan!')));
+                } else {
+                  setDialogState(() => isLoading = false);
+                  ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(content: Text('Gagal menjadwalkan ujian')));
+                }
+              },
+              child: isLoading ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Text('Simpan'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
+

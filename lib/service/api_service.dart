@@ -302,6 +302,36 @@ class ApiService {
     return false;
   }
 
+  Future<List<dynamic>> getAdminJournalReadings(String status) async {
+    final token = await _getToken();
+    if (token == null) return [];
+    try {
+      final response = await http.get(
+          Uri.parse('$baseUrl/admin/journal-readings?status=$status'),
+          headers: _buildHeaders(token));
+      if (response.statusCode == 200) return jsonDecode(response.body);
+    } catch (e) {
+      debugPrint('Error fetching admin journal readings: $e');
+    }
+    return [];
+  }
+
+  Future<bool> adminReviewJournal(int jid, String status, String catatan) async {
+    final token = await _getToken();
+    if (token == null) return false;
+    try {
+      final response = await http.patch(
+        Uri.parse('$baseUrl/admin/journal-readings/$jid/review'),
+        headers: _buildHeaders(token),
+        body: jsonEncode({'status': status, 'catatan_admin': catatan}),
+      );
+      return response.statusCode == 200;
+    } catch (e) {
+      debugPrint('Error reviewing journal: $e');
+    }
+    return false;
+  }
+
   // --- ADMIN: VERIFICATIONS ---
   Future<List<dynamic>> getPendingVerifications() async {
     final token = await _getToken();
@@ -468,4 +498,54 @@ class ApiService {
     }
     return false;
   }
+
+  // --- ADMIN: WARNING & EXAM ---
+  Future<bool> adminSetWarning(int uid, bool active, String message) async {
+    final token = await _getToken();
+    if (token == null) return false;
+    try {
+      final response = await http.patch(
+        Uri.parse('$baseUrl/admin/users/$uid/warning'),
+        headers: _buildHeaders(token),
+        body: jsonEncode({'warning_active': active, 'warning_message': message}),
+      );
+      return response.statusCode == 200;
+    } catch (e) {
+      debugPrint('Error setting warning: $e');
+    }
+    return false;
+  }
+
+  Future<bool> adminAddOrganExam(Map<String, dynamic> data) async {
+    final token = await _getToken();
+    if (token == null) return false;
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/admin/organ-exams'),
+        headers: _buildHeaders(token),
+        body: jsonEncode(data),
+      );
+      return response.statusCode == 201;
+    } catch (e) {
+      debugPrint('Error adding organ exam: $e');
+    }
+    return false;
+  }
+
+  // --- TOPIC DUPLICATION CHECK ---
+  Future<Map<String, dynamic>> checkTopicDuplication(String judul, String jenis) async {
+    final token = await _getToken();
+    if (token == null) return {'exists': false};
+    try {
+      final uri = Uri.parse('$baseUrl/check-topic?judul=${Uri.encodeComponent(judul)}&jenis=${Uri.encodeComponent(jenis)}');
+      final response = await http.get(uri, headers: _buildHeaders(token));
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      }
+    } catch (e) {
+      debugPrint('Error checking topic: $e');
+    }
+    return {'exists': false};
+  }
 }
+

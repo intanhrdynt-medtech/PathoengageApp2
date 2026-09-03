@@ -133,6 +133,50 @@ class _PenelitianScreenState extends State<PenelitianScreen> with SingleTickerPr
                                 return;
                               }
                               setDlg(() => isSubmitting = true);
+                              // Cek duplikasi topik
+                              final dupCheck = await _api.checkTopicDuplication(judulCtrl.text.trim(), 'penelitian');
+                              if (dupCheck['exists'] == true) {
+                                setDlg(() => isSubmitting = false);
+                                if (ctx.mounted) {
+                                  showDialog(
+                                    context: ctx,
+                                    builder: (c) => AlertDialog(
+                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                                      title: const Row(children: [
+                                        Icon(Icons.warning_amber_rounded, color: Colors.orange),
+                                        SizedBox(width: 8),
+                                        Text('Topik Duplikat', style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold)),
+                                      ]),
+                                      content: Text(dupCheck['message'] ?? 'Judul sudah pernah diajukan.'),
+                                      actions: [
+                                        TextButton(onPressed: () => Navigator.pop(c), child: const Text('Batal')),
+                                        ElevatedButton(
+                                          style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
+                                          onPressed: () async {
+                                            Navigator.pop(c);
+                                            setDlg(() => isSubmitting = true);
+                                            final success = await _api.submitPenelitian({
+                                              'judul': judulCtrl.text.trim(),
+                                              'jenis': jenisCtrl.text.trim(),
+                                              'pembimbing_1': pemb1Ctrl.text.trim(),
+                                              'pembimbing_2': pemb2Ctrl.text.trim(),
+                                            });
+                                            setDlg(() => isSubmitting = false);
+                                            if (mounted) Navigator.pop(ctx);
+                                            if (success && mounted) {
+                                              _loadData();
+                                              ScaffoldMessenger.of(context).showSnackBar(
+                                                  const SnackBar(content: Text('Berhasil diajukan.')));
+                                            }
+                                          },
+                                          child: const Text('Tetap Ajukan', style: TextStyle(color: Colors.white)),
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                                }
+                                return;
+                              }
                               final success = await _api.submitPenelitian({
                                 'judul': judulCtrl.text.trim(),
                                 'jenis': jenisCtrl.text.trim(),

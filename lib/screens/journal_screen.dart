@@ -129,6 +129,51 @@ class _JournalScreenState extends State<JournalScreen> with SingleTickerProvider
                                 return;
                               }
                               setDlg(() => isSubmitting = true);
+                              // Cek duplikasi topik
+                              final dupCheck = await _api.checkTopicDuplication(judulCtrl.text.trim(), 'journal');
+                              if (dupCheck['exists'] == true) {
+                                setDlg(() => isSubmitting = false);
+                                if (ctx.mounted) {
+                                  showDialog(
+                                    context: ctx,
+                                    builder: (c) => AlertDialog(
+                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                                      title: const Row(children: [
+                                        Icon(Icons.warning_amber_rounded, color: Colors.orange),
+                                        SizedBox(width: 8),
+                                        Text('Topik Duplikat', style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold)),
+                                      ]),
+                                      content: Text(dupCheck['message'] ?? 'Judul sudah pernah diajukan.'),
+                                      actions: [
+                                        TextButton(onPressed: () => Navigator.pop(c), child: const Text('Batal')),
+                                        ElevatedButton(
+                                          style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
+                                          onPressed: () async {
+                                            Navigator.pop(c);
+                                            setDlg(() => isSubmitting = true);
+                                            final success = await _api.submitJournalReading({
+                                              'judul': judulCtrl.text.trim(),
+                                              'penulis': penulisCtrl.text.trim(),
+                                              'nama_jurnal': jurnalCtrl.text.trim(),
+                                              'pembimbing': pembimbingCtrl.text.trim(),
+                                              'jenis': 'Journal Reading',
+                                            });
+                                            setDlg(() => isSubmitting = false);
+                                            if (mounted) Navigator.pop(ctx);
+                                            if (success && mounted) {
+                                              _loadData();
+                                              ScaffoldMessenger.of(context).showSnackBar(
+                                                  const SnackBar(content: Text('Berhasil diajukan, menunggu ACC admin.')));
+                                            }
+                                          },
+                                          child: const Text('Tetap Ajukan', style: TextStyle(color: Colors.white)),
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                                }
+                                return;
+                              }
                               final success = await _api.submitJournalReading({
                                 'judul': judulCtrl.text.trim(),
                                 'penulis': penulisCtrl.text.trim(),

@@ -950,6 +950,42 @@ def jr_dict(j, include_user=False):
     return d
 
 
+@app.route('/check-topic', methods=['GET'])
+@auth_required
+def check_topic():
+    judul = request.args.get('judul', '').strip()
+    jenis = request.args.get('jenis', '').lower()
+    
+    if not judul:
+        return jsonify({'exists': False, 'message': 'Judul kosong'})
+        
+    exists = False
+    message = ''
+    
+    if jenis == 'penelitian':
+        existing = Penelitian.query.filter(db.func.lower(Penelitian.judul) == judul.lower()).first()
+        if existing:
+            exists = True
+            message = 'Judul penelitian sudah pernah diajukan.'
+    elif jenis == 'journal_reading' or jenis == 'journal':
+        existing = JournalReadingSubmission.query.filter(db.func.lower(JournalReadingSubmission.judul) == judul.lower()).first()
+        if existing:
+            exists = True
+            message = 'Judul journal reading sudah pernah diajukan.'
+    else:
+        # Check both if jenis not specified
+        existing_pen = Penelitian.query.filter(db.func.lower(Penelitian.judul) == judul.lower()).first()
+        existing_jr = JournalReadingSubmission.query.filter(db.func.lower(JournalReadingSubmission.judul) == judul.lower()).first()
+        if existing_pen or existing_jr:
+            exists = True
+            message = 'Judul sudah pernah digunakan (Penelitian atau Journal Reading).'
+            
+    return jsonify({
+        'exists': exists,
+        'message': message
+    })
+
+
 @app.route('/journal-readings', methods=['GET'])
 @auth_required
 def get_my_journal_readings():

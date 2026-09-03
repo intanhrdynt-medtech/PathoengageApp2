@@ -4,6 +4,7 @@ import 'package:fp_pemrograman/service/auth_service.dart';
 import 'package:fp_pemrograman/screens/register_screen.dart';
 import 'package:fp_pemrograman/screens/dashboard_screen.dart';
 import 'package:fp_pemrograman/screens/admin_dashboard_screen.dart';
+import 'package:fp_pemrograman/screens/evaluator_screen.dart';
 
 import 'dart:math';
 
@@ -45,6 +46,11 @@ class LoginScreenState extends State<LoginScreen> {
           Navigator.pushReplacement(
             context,
             MaterialPageRoute(builder: (context) => const AdminDashboardScreen()),
+          );
+        } else if (result['role'] == 'penilai') {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (context) => const EvaluatorScreen()),
           );
         } else {
           Navigator.pushReplacement(
