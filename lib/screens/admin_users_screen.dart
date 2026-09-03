@@ -531,6 +531,129 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
     );
   }
 
+  void _showAddEvaluatorDialog() {
+    final emailCtrl = TextEditingController();
+    final passCtrl = TextEditingController();
+    final nameCtrl = TextEditingController();
+    String errorMsg = '';
+    bool isLoading = false;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: Row(
+            children: [
+              CircleAvatar(
+                backgroundColor: Colors.teal.shade50,
+                radius: 18,
+                child: const Icon(Icons.rate_review, color: Colors.teal, size: 18),
+              ),
+              const SizedBox(width: 10),
+              const Text('Tambah Evaluator',
+                  style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold, fontSize: 16)),
+            ],
+          ),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: Colors.teal.shade50,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.teal.shade200),
+                  ),
+                  child: const Row(
+                    children: [
+                      Icon(Icons.info_outline, color: Colors.teal, size: 16),
+                      SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          'Evaluator dapat mereview Journal Reading & Penelitian PPDS',
+                          style: TextStyle(fontSize: 12, color: Colors.teal),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
+                if (errorMsg.isNotEmpty)
+                  Container(
+                    margin: const EdgeInsets.only(bottom: 8),
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                        color: Colors.red.shade50,
+                        borderRadius: BorderRadius.circular(8)),
+                    child: Text(errorMsg,
+                        style: const TextStyle(color: Colors.red, fontSize: 12)),
+                  ),
+                _dialogField(nameCtrl, 'Nama Lengkap (misal: Dr. X, Sp.PA)', Icons.person),
+                const SizedBox(height: 10),
+                _dialogField(emailCtrl, 'Email', Icons.email),
+                const SizedBox(height: 10),
+                _dialogField(passCtrl, 'Password (min. 6 karakter)', Icons.lock, isPassword: true),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx), child: const Text('Batal')),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.teal, foregroundColor: Colors.white),
+              onPressed: isLoading
+                  ? null
+                  : () async {
+                      if (nameCtrl.text.isEmpty ||
+                          emailCtrl.text.isEmpty ||
+                          passCtrl.text.isEmpty) {
+                        setDialogState(() => errorMsg = 'Semua field wajib diisi');
+                        return;
+                      }
+                      if (passCtrl.text.length < 6) {
+                        setDialogState(() => errorMsg = 'Password minimal 6 karakter');
+                        return;
+                      }
+                      setDialogState(() {
+                        isLoading = true;
+                        errorMsg = '';
+                      });
+                      final result = await _api.createUserWithRole(
+                        emailCtrl.text.trim(),
+                        passCtrl.text,
+                        nameCtrl.text.trim(),
+                        'penilai',
+                      );
+                      setDialogState(() => isLoading = false);
+                      if (result != null && result['error'] == null) {
+                        if (mounted) Navigator.pop(ctx);
+                        ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                                content: Text('Evaluator baru berhasil ditambahkan! ✅')));
+                        _loadData();
+                      } else {
+                        setDialogState(() =>
+                            errorMsg = result?['error']?.toString() ?? 'Gagal menambahkan evaluator');
+                      }
+                    },
+              child: isLoading
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2, color: Colors.white))
+                  : const Text('Tambah Evaluator'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -545,6 +668,14 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
             backgroundColor: Colors.red.shade700,
             icon: const Icon(Icons.admin_panel_settings, color: Colors.white, size: 18),
             label: const Text('Tambah Admin', style: TextStyle(color: Colors.white, fontFamily: 'Poppins', fontSize: 13)),
+          ),
+          const SizedBox(height: 10),
+          FloatingActionButton.extended(
+            heroTag: 'evaluator',
+            onPressed: _showAddEvaluatorDialog,
+            backgroundColor: Colors.teal,
+            icon: const Icon(Icons.rate_review, color: Colors.white, size: 18),
+            label: const Text('Tambah Evaluator', style: TextStyle(color: Colors.white, fontFamily: 'Poppins', fontSize: 13)),
           ),
           const SizedBox(height: 10),
           FloatingActionButton.extended(
