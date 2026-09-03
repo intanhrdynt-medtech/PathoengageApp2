@@ -5,7 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 class AuthService {
   // Use Vercel Backend
-  final String baseUrl = 'https://backend-ten-puce-60.vercel.app'; 
+  final String baseUrl = 'https://backend-intan12.vercel.app';
   
   Future<String?> getToken() async {
     final prefs = await SharedPreferences.getInstance();

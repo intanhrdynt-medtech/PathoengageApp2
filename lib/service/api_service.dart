@@ -5,7 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 class ApiService {
   // Use Vercel Backend
-  final String baseUrl = 'https://backend-ten-puce-60.vercel.app';
+  final String baseUrl = 'https://backend-intan12.vercel.app';
 
   Future<String?> _getToken() async {
     final prefs = await SharedPreferences.getInstance();
@@ -233,17 +233,71 @@ class ApiService {
     return false;
   }
 
-  Future<bool> deleteUser(int uid) async {
+  Future<bool> deleteUser(int id) async {
     final token = await _getToken();
     if (token == null) return false;
     try {
-      final response = await http.delete(
-        Uri.parse('$baseUrl/admin/users/$uid'),
-        headers: _buildHeaders(token),
-      );
+      final response = await http.delete(Uri.parse('$baseUrl/admin/users/$id'), headers: _buildHeaders(token));
       return response.statusCode == 200;
     } catch (e) {
       debugPrint('Error deleting user: $e');
+    }
+    return false;
+  }
+
+  // --- JOURNAL READING ---
+  Future<List<dynamic>> getMyJournalReadings() async {
+    final token = await _getToken();
+    if (token == null) return [];
+    try {
+      final response = await http.get(Uri.parse('$baseUrl/journal-readings'), headers: _buildHeaders(token));
+      if (response.statusCode == 200) return jsonDecode(response.body);
+    } catch (e) {
+      debugPrint('Error fetching my journal readings: $e');
+    }
+    return [];
+  }
+
+  Future<List<dynamic>> getAllJournalReadings(String query) async {
+    final token = await _getToken();
+    if (token == null) return [];
+    try {
+      final response = await http.get(Uri.parse('$baseUrl/journal-readings/all?q=$query'), headers: _buildHeaders(token));
+      if (response.statusCode == 200) return jsonDecode(response.body);
+    } catch (e) {
+      debugPrint('Error fetching all journal readings: $e');
+    }
+    return [];
+  }
+
+  Future<bool> submitJournalReading(Map<String, dynamic> data) async {
+    final token = await _getToken();
+    if (token == null) return false;
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/journal-readings'),
+        headers: _buildHeaders(token),
+        body: jsonEncode(data),
+      );
+      return response.statusCode == 201;
+    } catch (e) {
+      debugPrint('Error submitting journal reading: $e');
+    }
+    return false;
+  }
+
+  Future<bool> updateJournalReadingBukti(int id, String buktiUrl) async {
+    final token = await _getToken();
+    if (token == null) return false;
+    try {
+      final response = await http.patch(
+        Uri.parse('$baseUrl/journal-readings/$id/bukti'),
+        headers: _buildHeaders(token),
+        body: jsonEncode({'bukti_url': buktiUrl}),
+      );
+      return response.statusCode == 200;
+    } catch (e) {
+      debugPrint('Error updating journal reading bukti: $e');
     }
     return false;
   }
@@ -354,6 +408,63 @@ class ApiService {
       return response.statusCode == 201 || response.statusCode == 200;
     } catch (e) {
       debugPrint('Error adding rotation: $e');
+    }
+    return false;
+  }
+
+  // --- PENELITIAN ---
+  Future<List<dynamic>> getMyPenelitian() async {
+    final token = await _getToken();
+    if (token == null) return [];
+    try {
+      final response = await http.get(Uri.parse('\/penelitian'), headers: _buildHeaders(token));
+      if (response.statusCode == 200) return jsonDecode(response.body);
+    } catch (e) {
+      debugPrint('Error fetching my penelitian: ');
+    }
+    return [];
+  }
+
+  Future<List<dynamic>> getAllPenelitian(String query) async {
+    final token = await _getToken();
+    if (token == null) return [];
+    try {
+      final response = await http.get(Uri.parse('\/penelitian/all?q='), headers: _buildHeaders(token));
+      if (response.statusCode == 200) return jsonDecode(response.body);
+    } catch (e) {
+      debugPrint('Error fetching all penelitian: ');
+    }
+    return [];
+  }
+
+  Future<bool> submitPenelitian(Map<String, dynamic> data) async {
+    final token = await _getToken();
+    if (token == null) return false;
+    try {
+      final response = await http.post(
+        Uri.parse('\/penelitian'),
+        headers: _buildHeaders(token),
+        body: jsonEncode(data),
+      );
+      return response.statusCode == 201;
+    } catch (e) {
+      debugPrint('Error submitting penelitian: ');
+    }
+    return false;
+  }
+
+  Future<bool> updatePenelitian(int id, Map<String, dynamic> data) async {
+    final token = await _getToken();
+    if (token == null) return false;
+    try {
+      final response = await http.patch(
+        Uri.parse('\/penelitian/'),
+        headers: _buildHeaders(token),
+        body: jsonEncode(data),
+      );
+      return response.statusCode == 200;
+    } catch (e) {
+      debugPrint('Error updating penelitian: ');
     }
     return false;
   }

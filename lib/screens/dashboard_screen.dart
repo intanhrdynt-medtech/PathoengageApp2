@@ -7,6 +7,9 @@ import 'package:fp_pemrograman/screens/exams_screen.dart';
 import 'package:fp_pemrograman/screens/academic_screen.dart';
 import 'package:fp_pemrograman/screens/rotations_screen.dart';
 import 'package:fp_pemrograman/screens/profile_screen.dart';
+import 'package:fp_pemrograman/screens/penelitian_screen.dart';
+import 'package:fp_pemrograman/screens/pengabdian_screen.dart';
+import 'package:fp_pemrograman/screens/prestasi_screen.dart';
 import 'package:fp_pemrograman/widgets/responsive_wrapper.dart';
 
 class DashboardScreen extends StatefulWidget {
@@ -213,6 +216,28 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   ],
                 );
               }
+
+                    _buildMenuCard(
+                      icon: Icons.science,
+                      title: 'Penelitian',
+                      subtitle: 'Karya akhir',
+                      color: Colors.teal,
+                      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const PenelitianScreen())),
+                    ),
+                    _buildMenuCard(
+                      icon: Icons.group,
+                      title: 'Pengabdian',
+                      subtitle: 'Masyarakat',
+                      color: Colors.orange,
+                      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const PengabdianScreen())),
+                    ),
+                    _buildMenuCard(
+                      icon: Icons.star,
+                      title: 'Prestasi',
+                      subtitle: 'Penghargaan',
+                      color: Colors.amber,
+                      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const PrestasiScreen())),
+                    ),
             ),
 
             const SizedBox(height: 24),

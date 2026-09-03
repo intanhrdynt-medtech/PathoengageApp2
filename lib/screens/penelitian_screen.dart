@@ -3,17 +3,17 @@ import 'package:fp_pemrograman/colors.dart';
 import 'package:fp_pemrograman/service/api_service.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-class JournalScreen extends StatefulWidget {
-  const JournalScreen({Key? key}) : super(key: key);
+class PenelitianScreen extends StatefulWidget {
+  const PenelitianScreen({Key? key}) : super(key: key);
 
   @override
-  State<JournalScreen> createState() => _JournalScreenState();
+  State<PenelitianScreen> createState() => _PenelitianScreenState();
 }
 
-class _JournalScreenState extends State<JournalScreen> with SingleTickerProviderStateMixin {
+class _PenelitianScreenState extends State<PenelitianScreen> with SingleTickerProviderStateMixin {
   final ApiService _api = ApiService();
-  List<dynamic> _myJournals = [];
-  List<dynamic> _allJournals = [];
+  List<dynamic> _myPenelitian = [];
+  List<dynamic> _allPenelitian = [];
   bool _isLoading = true;
   late TabController _tabController;
 
@@ -35,11 +35,11 @@ class _JournalScreenState extends State<JournalScreen> with SingleTickerProvider
 
   Future<void> _loadData() async {
     setState(() => _isLoading = true);
-    final myJournals = await _api.getMyJournalReadings();
-    final allJournals = await _api.getAllJournalReadings('');
+    final myPenelitian = await _api.getMyPenelitian();
+    final allPenelitian = await _api.getAllPenelitian('');
     setState(() {
-      _myJournals = myJournals;
-      _allJournals = allJournals;
+      _myPenelitian = myPenelitian;
+      _allPenelitian = allPenelitian;
       _isLoading = false;
     });
   }
@@ -58,27 +58,31 @@ class _JournalScreenState extends State<JournalScreen> with SingleTickerProvider
 
   Color _statusColor(String? status) {
     switch (status) {
+      case 'published':
       case 'approved': return Colors.green;
-      case 'pending': return Colors.orange;
-      case 'rejected': return Colors.red;
+      case 'revisi_1':
+      case 'revisi_2': return Colors.red;
+      case 'submitted': return Colors.orange;
       default: return AppColors.textGrey;
     }
   }
 
   String _statusLabel(String? status) {
     switch (status) {
+      case 'published': return 'Published 🎉';
       case 'approved': return 'Approved ✓';
-      case 'pending': return 'Menunggu ACC';
-      case 'rejected': return 'Ditolak';
+      case 'revisi_1': return 'Revisi 1';
+      case 'revisi_2': return 'Revisi 2';
+      case 'submitted': return 'Menunggu Review';
       default: return 'Draft';
     }
   }
 
   void _showAddDialog() {
     final judulCtrl = TextEditingController();
-    final penulisCtrl = TextEditingController();
-    final jurnalCtrl = TextEditingController();
-    final pembimbingCtrl = TextEditingController();
+    final jenisCtrl = TextEditingController();
+    final pemb1Ctrl = TextEditingController();
+    final pemb2Ctrl = TextEditingController();
     bool isSubmitting = false;
 
     showDialog(
@@ -93,28 +97,28 @@ class _JournalScreenState extends State<JournalScreen> with SingleTickerProvider
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('Ajukan Topik Journal Reading',
+                  const Text('Ajukan Penelitian / Karya Akhir',
                       style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold, fontSize: 16)),
                   const SizedBox(height: 16),
                   
                   TextField(
                     controller: judulCtrl,
-                    decoration: const InputDecoration(labelText: 'Judul Jurnal / Topik', border: OutlineInputBorder()),
+                    decoration: const InputDecoration(labelText: 'Judul Penelitian', border: OutlineInputBorder()),
                   ),
                   const SizedBox(height: 12),
                   TextField(
-                    controller: penulisCtrl,
-                    decoration: const InputDecoration(labelText: 'Penulis (Opsional)', border: OutlineInputBorder()),
+                    controller: jenisCtrl,
+                    decoration: const InputDecoration(labelText: 'Jenis (Case Report/Karya Akhir dll)', border: OutlineInputBorder()),
                   ),
                   const SizedBox(height: 12),
                   TextField(
-                    controller: jurnalCtrl,
-                    decoration: const InputDecoration(labelText: 'Nama Jurnal Sumber (Opsional)', border: OutlineInputBorder()),
+                    controller: pemb1Ctrl,
+                    decoration: const InputDecoration(labelText: 'Pembimbing 1', border: OutlineInputBorder()),
                   ),
                   const SizedBox(height: 12),
                   TextField(
-                    controller: pembimbingCtrl,
-                    decoration: const InputDecoration(labelText: 'Pembimbing', border: OutlineInputBorder()),
+                    controller: pemb2Ctrl,
+                    decoration: const InputDecoration(labelText: 'Pembimbing 2 (Opsional)', border: OutlineInputBorder()),
                   ),
                   const SizedBox(height: 20),
 
@@ -129,24 +133,27 @@ class _JournalScreenState extends State<JournalScreen> with SingleTickerProvider
                                 return;
                               }
                               setDlg(() => isSubmitting = true);
-                              final success = await _api.submitJournalReading({
+                              final success = await _api.submitPenelitian({
                                 'judul': judulCtrl.text.trim(),
-                                'penulis': penulisCtrl.text.trim(),
-                                'nama_jurnal': jurnalCtrl.text.trim(),
-                                'pembimbing': pembimbingCtrl.text.trim(),
-                                'jenis': 'Journal Reading',
+                                'jenis': jenisCtrl.text.trim(),
+                                'pembimbing_1': pemb1Ctrl.text.trim(),
+                                'pembimbing_2': pemb2Ctrl.text.trim(),
                               });
                               setDlg(() => isSubmitting = false);
                               if (mounted) Navigator.pop(ctx);
                               if (success) {
                                 _loadData();
                                 ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(content: Text('Berhasil diajukan, menunggu ACC admin.')));
+                                    const SnackBar(content: Text('Berhasil diajukan.')));
                               }
                             },
                       child: isSubmitting 
                           ? const CircularProgressIndicator(color: Colors.white)
-                          : const Text('Ajukan Topik', style: TextStyle(fontFamily: 'Poppins')),
+                          : const Text('Ajukan Penelitian', style: TextStyle(fontFamily: 'Poppins')),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.primaryPurple,
+                        foregroundColor: Colors.white,
+                      ),
                     ),
                   )
                 ],
@@ -158,9 +165,24 @@ class _JournalScreenState extends State<JournalScreen> with SingleTickerProvider
     );
   }
 
-  void _showUploadBuktiDialog(Map<String, dynamic> journal) {
-    final buktiCtrl = TextEditingController(text: journal['bukti_url'] ?? '');
+  void _showUpdateDialog(Map<String, dynamic> pen) {
+    final status = pen['status'] ?? 'draft';
+    final linkDocCtrl = TextEditingController();
     bool isSubmitting = false;
+
+    String label = 'Upload Dokumen';
+    String field = 'dokumen_proposal_url';
+
+    if (status == 'revisi_1') {
+      label = 'Upload Dokumen Revisi 1';
+      field = 'dokumen_revisi1_url';
+    } else if (status == 'revisi_2') {
+      label = 'Upload Dokumen Revisi 2';
+      field = 'dokumen_revisi2_url';
+    } else if (status == 'approved') {
+      label = 'Upload Dokumen Final';
+      field = 'dokumen_final_url';
+    }
 
     showDialog(
       context: context,
@@ -173,14 +195,13 @@ class _JournalScreenState extends State<JournalScreen> with SingleTickerProvider
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('Upload Bukti (Link)',
-                    style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold, fontSize: 16)),
+                Text(label, style: const TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold, fontSize: 16)),
                 const SizedBox(height: 16),
                 TextField(
-                  controller: buktiCtrl,
+                  controller: linkDocCtrl,
                   decoration: const InputDecoration(
                     hintText: 'https://...',
-                    labelText: 'URL Bukti Pelaksanaan',
+                    labelText: 'URL Dokumen',
                     border: OutlineInputBorder()
                   ),
                 ),
@@ -192,19 +213,27 @@ class _JournalScreenState extends State<JournalScreen> with SingleTickerProvider
                         ? null
                         : () async {
                             setDlg(() => isSubmitting = true);
-                            final success = await _api.updateJournalReadingBukti(
-                                journal['id'], buktiCtrl.text.trim());
+                            final nextStatus = status == 'draft' ? 'submitted' : status;
+                            final success = await _api.updatePenelitian(
+                                pen['id'], {
+                                  field: linkDocCtrl.text.trim(),
+                                  'status': nextStatus, // draft -> submitted, others stay same until admin changes
+                                });
                             setDlg(() => isSubmitting = false);
                             if (mounted) Navigator.pop(ctx);
                             if (success) {
                               _loadData();
                               ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(content: Text('Bukti berhasil diupload.')));
+                                  const SnackBar(content: Text('Dokumen berhasil diupload.')));
                             }
                           },
                     child: isSubmitting 
                         ? const CircularProgressIndicator(color: Colors.white)
                         : const Text('Simpan', style: TextStyle(fontFamily: 'Poppins')),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.primaryPurple,
+                      foregroundColor: Colors.white,
+                    ),
                   ),
                 )
               ],
@@ -215,19 +244,18 @@ class _JournalScreenState extends State<JournalScreen> with SingleTickerProvider
     );
   }
 
-  Widget _buildMyJournals() {
-    if (_myJournals.isEmpty) {
+  Widget _buildMyPenelitian() {
+    if (_myPenelitian.isEmpty) {
       return const Center(
-        child: Text('Belum ada pengajuan Journal Reading', style: TextStyle(fontFamily: 'Poppins', color: Colors.grey)),
+        child: Text('Belum ada penelitian', style: TextStyle(fontFamily: 'Poppins', color: Colors.grey)),
       );
     }
     return ListView.builder(
       padding: const EdgeInsets.all(16),
-      itemCount: _myJournals.length,
+      itemCount: _myPenelitian.length,
       itemBuilder: (ctx, i) {
-        final j = _myJournals[i];
-        final status = j['status'];
-        final isApproved = status == 'approved';
+        final p = _myPenelitian[i];
+        final status = p['status'];
         return Card(
           margin: const EdgeInsets.only(bottom: 12),
           child: Padding(
@@ -239,7 +267,7 @@ class _JournalScreenState extends State<JournalScreen> with SingleTickerProvider
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Expanded(
-                      child: Text(j['judul'] ?? '', 
+                      child: Text(p['judul'] ?? '', 
                         style: const TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold, fontSize: 14)),
                     ),
                     Container(
@@ -253,25 +281,38 @@ class _JournalScreenState extends State<JournalScreen> with SingleTickerProvider
                     )
                   ],
                 ),
-                if (j['pembimbing'] != null && j['pembimbing'].toString().isNotEmpty) ...[
-                  const SizedBox(height: 6),
-                  Text('Pembimbing: ', style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                const SizedBox(height: 8),
+                Text('Jenis: ', style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                Text('Pembimbing 1: ', style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                
+                if (status == 'revisi_1' && p['catatan_revisi1'] != null) ...[
+                  const SizedBox(height: 8),
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    color: Colors.red.shade50,
+                    child: Text('Catatan Revisi 1: ', style: TextStyle(color: Colors.red.shade800, fontSize: 11)),
+                  ),
                 ],
-                if (isApproved) ...[
-                  const SizedBox(height: 12),
-                  const Divider(),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(j['bukti_submitted'] == true ? 'Bukti sudah diupload' : 'Belum upload bukti', 
-                          style: TextStyle(fontSize: 12, color: j['bukti_submitted'] == true ? Colors.green : Colors.orange)),
-                      TextButton(
-                        onPressed: () => _showUploadBuktiDialog(j),
-                        child: Text(j['bukti_submitted'] == true ? 'Edit Bukti' : 'Upload Bukti'),
-                      )
-                    ],
-                  )
-                ]
+                if (status == 'revisi_2' && p['catatan_revisi2'] != null) ...[
+                  const SizedBox(height: 8),
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    color: Colors.red.shade50,
+                    child: Text('Catatan Revisi 2: ', style: TextStyle(color: Colors.red.shade800, fontSize: 11)),
+                  ),
+                ],
+
+                const SizedBox(height: 12),
+                const Divider(),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    TextButton(
+                      onPressed: () => _showUpdateDialog(p),
+                      child: const Text('Update / Upload Doc'),
+                    )
+                  ],
+                )
               ],
             ),
           ),
@@ -280,28 +321,29 @@ class _JournalScreenState extends State<JournalScreen> with SingleTickerProvider
     );
   }
 
-  Widget _buildAllJournals() {
-    if (_allJournals.isEmpty) {
+  Widget _buildAllPenelitian() {
+    if (_allPenelitian.isEmpty) {
       return const Center(
-        child: Text('Belum ada Journal Reading yang di-ACC', style: TextStyle(fontFamily: 'Poppins', color: Colors.grey)),
+        child: Text('Belum ada penelitian dari PPDS lain', style: TextStyle(fontFamily: 'Poppins', color: Colors.grey)),
       );
     }
     return ListView.builder(
       padding: const EdgeInsets.all(16),
-      itemCount: _allJournals.length,
+      itemCount: _allPenelitian.length,
       itemBuilder: (ctx, i) {
-        final j = _allJournals[i];
+        final p = _allPenelitian[i];
         return Card(
           margin: const EdgeInsets.only(bottom: 12),
           child: ListTile(
-            title: Text(j['judul'] ?? '', style: const TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold, fontSize: 13)),
-            subtitle: Text('Oleh: ', style: const TextStyle(fontFamily: 'Poppins', fontSize: 11)),
-            trailing: j['bukti_url'] != null && j['bukti_url'].toString().isNotEmpty
-                ? IconButton(
-                    icon: const Icon(Icons.link, color: AppColors.primaryPurple),
-                    onPressed: () => _openUrl(j['bukti_url']),
-                  )
-                : null,
+            title: Text(p['judul'] ?? '', style: const TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold, fontSize: 13)),
+            subtitle: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Oleh: ', style: const TextStyle(fontFamily: 'Poppins', fontSize: 11)),
+                Text('Jenis: ', style: const TextStyle(fontFamily: 'Poppins', fontSize: 11, color: Colors.grey)),
+              ],
+            ),
+            isThreeLine: true,
           ),
         );
       },
@@ -313,7 +355,7 @@ class _JournalScreenState extends State<JournalScreen> with SingleTickerProvider
     return Scaffold(
       backgroundColor: AppColors.backgroundLightest,
       appBar: AppBar(
-        title: const Text('Journal Reading', style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold)),
+        title: const Text('Penelitian', style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold)),
         backgroundColor: AppColors.primaryPurple,
         foregroundColor: Colors.white,
         elevation: 0,
@@ -323,8 +365,8 @@ class _JournalScreenState extends State<JournalScreen> with SingleTickerProvider
           unselectedLabelColor: Colors.white60,
           indicatorColor: Colors.white,
           tabs: const [
-            Tab(text: 'Jurnal Saya'),
-            Tab(text: 'Semua PPDS'),
+            Tab(text: 'Penelitian Saya'),
+            Tab(text: 'Semua Penelitian'),
           ],
         ),
       ),
@@ -335,8 +377,8 @@ class _JournalScreenState extends State<JournalScreen> with SingleTickerProvider
               child: TabBarView(
                 controller: _tabController,
                 children: [
-                  _buildMyJournals(),
-                  _buildAllJournals(),
+                  _buildMyPenelitian(),
+                  _buildAllPenelitian(),
                 ],
               ),
             ),
@@ -344,7 +386,7 @@ class _JournalScreenState extends State<JournalScreen> with SingleTickerProvider
           ? FloatingActionButton.extended(
               onPressed: _showAddDialog,
               icon: const Icon(Icons.add),
-              label: const Text('Ajukan Topik', style: TextStyle(fontFamily: 'Poppins')),
+              label: const Text('Ajukan Penelitian', style: TextStyle(fontFamily: 'Poppins')),
               backgroundColor: AppColors.primaryPurple,
               foregroundColor: Colors.white,
             )
