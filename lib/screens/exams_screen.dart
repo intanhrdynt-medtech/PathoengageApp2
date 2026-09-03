@@ -14,10 +14,11 @@ class ExamsScreen extends StatefulWidget {
 class _ExamsScreenState extends State<ExamsScreen> with SingleTickerProviderStateMixin {
   final ApiService _api = ApiService();
   List<dynamic> _exams = [];
+  List<dynamic> _organExams = [];
   bool _isLoading = true;
   late TabController _tabController;
 
-  final List<String> _tabs = ['Semua', 'Lokal', 'Nasional'];
+  final List<String> _tabs = ['Semua', 'Lokal', 'Nasional', 'Organ'];
 
   @override
   void initState() {
@@ -34,8 +35,10 @@ class _ExamsScreenState extends State<ExamsScreen> with SingleTickerProviderStat
 
   void _loadExams() async {
     final data = await _api.getExams();
+    final organData = await _api.getMyOrganExams();
     setState(() {
       _exams = data;
+      _organExams = organData;
       _isLoading = false;
     });
   }
@@ -70,25 +73,29 @@ class _ExamsScreenState extends State<ExamsScreen> with SingleTickerProviderStat
               child: TabBarView(
                 controller: _tabController,
                 children: _tabs.map((type) {
-                  final exams = _filterExams(type);
-                  if (exams.isEmpty) {
+                  final bool isOrganTab = type == 'Organ';
+                  final list = isOrganTab ? _organExams : _filterExams(type);
+                  
+                  if (list.isEmpty) {
                     return Center(
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
                           Icon(Icons.school_outlined, size: 64, color: AppColors.textGrey.withOpacity(0.5)),
                           const SizedBox(height: 12),
-                          Text('Belum ada data ujian', style: TextStyle(color: AppColors.textGrey, fontFamily: 'Poppins')),
+                          Text(isOrganTab ? 'Belum ada ujian organ' : 'Belum ada data ujian', style: TextStyle(color: AppColors.textGrey, fontFamily: 'Poppins')),
                         ],
                       ),
                     );
                   }
                   return ListView.builder(
                     padding: const EdgeInsets.all(16),
-                    itemCount: exams.length,
-                    itemBuilder: (ctx, i) => InkWell(
-                        onTap: () => _handleExamTap(exams[i]),
-                        child: _buildExamCard(exams[i])),
+                    itemCount: list.length,
+                    itemBuilder: (ctx, i) => isOrganTab
+                        ? _buildOrganExamCard(list[i])
+                        : InkWell(
+                            onTap: () => _handleExamTap(list[i]),
+                            child: _buildExamCard(list[i])),
                   );
                 }).toList(),
               ),
@@ -260,6 +267,85 @@ class _ExamsScreenState extends State<ExamsScreen> with SingleTickerProviderStat
                             fontStyle: FontStyle.italic,
                             color: Colors.blueAccent),
                       ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+              decoration: BoxDecoration(
+                color: statusColor.withOpacity(0.12),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Text(statusLabel,
+                  style: TextStyle(
+                      fontFamily: 'Poppins', fontSize: 11, fontWeight: FontWeight.bold, color: statusColor)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildOrganExamCard(Map<String, dynamic> exam) {
+    Color statusColor = Colors.grey;
+    String statusLabel = exam['status'] ?? 'terjadwal';
+    if (statusLabel == 'lulus') {
+      statusColor = AppColors.successGreen;
+      statusLabel = 'Lulus';
+    } else if (statusLabel == 'tidak_lulus') {
+      statusColor = AppColors.accentRed;
+      statusLabel = 'Tidak Lulus';
+    } else {
+      statusColor = AppColors.warningOrange;
+      statusLabel = 'Terjadwal';
+    }
+
+    String? scheduledDate = exam['tanggal'] != null
+        ? DateFormat('dd MMM yyyy').format(DateTime.parse(exam['tanggal']).toLocal())
+        : null;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.06), blurRadius: 10, offset: const Offset(0, 4))],
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppColors.primaryPurple.withOpacity(0.12),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.medical_services, color: AppColors.primaryPurple, size: 28),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(exam['nama_ujian'] ?? 'Ujian Organ',
+                      style: const TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold, fontSize: 14)),
+                  const SizedBox(height: 4),
+                  Text('Organ: ${exam['organ'] ?? '-'}',
+                      style: TextStyle(fontFamily: 'Poppins', fontSize: 12, color: AppColors.textGrey)),
+                  Text('Penguji: ${exam['penguji'] ?? '-'}',
+                      style: TextStyle(fontFamily: 'Poppins', fontSize: 11, color: AppColors.textGrey)),
+                  if (scheduledDate != null) ...[
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        Icon(Icons.calendar_today, size: 12, color: AppColors.textGrey),
+                        const SizedBox(width: 4),
+                        Text(scheduledDate,
+                            style: TextStyle(fontFamily: 'Poppins', fontSize: 12, color: AppColors.textGrey)),
+                      ],
                     ),
                   ],
                 ],

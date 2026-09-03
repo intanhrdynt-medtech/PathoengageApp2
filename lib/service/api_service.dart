@@ -506,7 +506,20 @@ class ApiService {
     return false;
   }
 
-  // --- ADMIN: WARNING & EXAM ---
+  // --- ORGAN EXAMS ---
+  Future<List<dynamic>> getMyOrganExams() async {
+    final token = await _getToken();
+    if (token == null) return [];
+    try {
+      final response = await http.get(Uri.parse('$baseUrl/organ-exams'), headers: _buildHeaders(token));
+      if (response.statusCode == 200) return jsonDecode(response.body);
+    } catch (e) {
+      debugPrint('Error fetching my organ exams: $e');
+    }
+    return [];
+  }
+
+  // --- ADMIN: ORGAN EXAM ---
   Future<bool> adminSetWarning(int uid, bool active, String message) async {
     final token = await _getToken();
     if (token == null) return false;
