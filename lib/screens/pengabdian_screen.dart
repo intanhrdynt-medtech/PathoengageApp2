@@ -227,26 +227,50 @@ class _PengabdianScreenState extends State<PengabdianScreen> {
 
   Widget _buildEmptyState() {
     return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(Icons.diversity_3, size: 80, color: Colors.grey[300]),
-          const SizedBox(height: 16),
-          Text(
-            'Belum ada riwayat pengabdian masyarakat.',
-            style: TextStyle(color: Colors.grey[600], fontSize: 16),
-          ),
-          const SizedBox(height: 8),
-          ElevatedButton.icon(
-            onPressed: _showAddDialog,
-            icon: const Icon(Icons.add),
-            label: const Text('Tambah Pengabdian'),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.primaryPurple,
-              foregroundColor: Colors.white,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 32),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.diversity_3, size: 80, color: Colors.grey[300]),
+            const SizedBox(height: 20),
+            Text(
+              'Belum ada riwayat pengabdian masyarakat.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: Colors.grey[600],
+                fontSize: 16,
+                fontFamily: 'Poppins',
+              ),
             ),
-          )
-        ],
+            const SizedBox(height: 8),
+            Text(
+              'Catat kegiatan pengabdianmu di sini!',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: Colors.grey[400],
+                fontSize: 13,
+                fontFamily: 'Poppins',
+              ),
+            ),
+            const SizedBox(height: 24),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: _showAddDialog,
+                icon: const Icon(Icons.add),
+                label: const Text('Tambah Pengabdian',
+                    style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold)),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.primaryPurple,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

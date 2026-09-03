@@ -269,7 +269,12 @@ class _JournalScreenState extends State<JournalScreen> with SingleTickerProvider
   Widget _buildMyJournals() {
     if (_myJournals.isEmpty) {
       return const Center(
-        child: Text('Belum ada pengajuan Journal Reading', style: TextStyle(fontFamily: 'Poppins', color: Colors.grey)),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 32),
+          child: Text('Belum ada pengajuan Journal Reading',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontFamily: 'Poppins', color: Colors.grey)),
+        ),
       );
     }
     return ListView.builder(
@@ -334,7 +339,12 @@ class _JournalScreenState extends State<JournalScreen> with SingleTickerProvider
   Widget _buildAllJournals() {
     if (_allJournals.isEmpty) {
       return const Center(
-        child: Text('Belum ada Journal Reading yang di-ACC', style: TextStyle(fontFamily: 'Poppins', color: Colors.grey)),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 32),
+          child: Text('Belum ada Journal Reading yang di-ACC',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontFamily: 'Poppins', color: Colors.grey)),
+        ),
       );
     }
     return ListView.builder(

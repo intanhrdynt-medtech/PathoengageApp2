@@ -291,7 +291,12 @@ class _PenelitianScreenState extends State<PenelitianScreen> with SingleTickerPr
   Widget _buildMyPenelitian() {
     if (_myPenelitian.isEmpty) {
       return const Center(
-        child: Text('Belum ada penelitian', style: TextStyle(fontFamily: 'Poppins', color: Colors.grey)),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 32),
+          child: Text('Belum ada penelitian',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontFamily: 'Poppins', color: Colors.grey)),
+        ),
       );
     }
     return ListView.builder(
@@ -368,7 +373,12 @@ class _PenelitianScreenState extends State<PenelitianScreen> with SingleTickerPr
   Widget _buildAllPenelitian() {
     if (_allPenelitian.isEmpty) {
       return const Center(
-        child: Text('Belum ada penelitian dari PPDS lain', style: TextStyle(fontFamily: 'Poppins', color: Colors.grey)),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 32),
+          child: Text('Belum ada penelitian dari PPDS lain',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontFamily: 'Poppins', color: Colors.grey)),
+        ),
       );
     }
     return ListView.builder(
