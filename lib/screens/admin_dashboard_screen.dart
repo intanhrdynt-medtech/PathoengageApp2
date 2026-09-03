@@ -28,26 +28,125 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     _checkPendingVerifications();
   }
 
+  bool _notifShown = false;
+
   Future<void> _checkPendingVerifications() async {
+    if (_notifShown) return;
     final api = ApiService();
-    final pending = await api.getPendingVerifications();
-    if (pending.isNotEmpty && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Terdapat ${pending.length} pengajuan yang butuh verifikasi!'),
-          backgroundColor: AppColors.accentRed,
-          behavior: SnackBarBehavior.floating,
-          duration: const Duration(seconds: 5),
-          action: SnackBarAction(
-            label: 'LIHAT',
-            textColor: Colors.white,
-            onPressed: () {
-              setState(() => _selectedIndex = 0);
-            },
+
+    // Fetch semua pending secara paralel
+    final results = await Future.wait([
+      api.getPendingVerifications(),
+      api.getAdminJournalReadings('pending'),
+      api.getAllPenelitian(''),
+    ]);
+
+    final pendingVerif = results[0] as List;
+    final pendingJournals = results[1] as List;
+    final pendingPenelitian = (results[2] as List)
+        .where((p) => p['status'] == 'submitted')
+        .toList();
+
+    final totalPending = pendingVerif.length + pendingJournals.length + pendingPenelitian.length;
+
+    if (totalPending > 0 && mounted && !_notifShown) {
+      _notifShown = true;
+      await Future.delayed(const Duration(milliseconds: 300));
+      if (!mounted) return;
+
+      showDialog(
+        context: context,
+        barrierDismissible: true,
+        builder: (ctx) => Dialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: AppColors.accentRed.withOpacity(0.12),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.notifications_active, color: AppColors.accentRed, size: 36),
+                ),
+                const SizedBox(height: 14),
+                const Text('Ada Pengajuan Baru!',
+                    style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold, fontSize: 18)),
+                const SizedBox(height: 6),
+                Text('Terdapat $totalPending item yang menunggu tindakan Anda.',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(fontFamily: 'Poppins', fontSize: 13, color: Colors.grey)),
+                const SizedBox(height: 16),
+                // Breakdown per kategori
+                if (pendingVerif.isNotEmpty)
+                  _notifRow(Icons.verified_outlined, 'Verifikasi Umum', pendingVerif.length, Colors.blue),
+                if (pendingJournals.isNotEmpty)
+                  _notifRow(Icons.article_outlined, 'Journal Reading', pendingJournals.length, Colors.orange),
+                if (pendingPenelitian.isNotEmpty)
+                  _notifRow(Icons.science_outlined, 'Penelitian', pendingPenelitian.length, Colors.purple),
+                const SizedBox(height: 20),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () => Navigator.pop(ctx),
+                        style: OutlinedButton.styleFrom(
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                        ),
+                        child: const Text('Nanti', style: TextStyle(fontFamily: 'Poppins')),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: ElevatedButton(
+                        onPressed: () {
+                          Navigator.pop(ctx);
+                          setState(() => _selectedIndex = 0);
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.primaryPurple,
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                        ),
+                        child: const Text('Lihat Sekarang', style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold)),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
         ),
       );
     }
+  }
+
+  Widget _notifRow(IconData icon, String label, int count, Color color) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, color: color, size: 20),
+          const SizedBox(width: 10),
+          Expanded(child: Text(label, style: TextStyle(fontFamily: 'Poppins', fontSize: 13, color: color, fontWeight: FontWeight.w600))),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+            decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(20)),
+            child: Text('$count', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
+          ),
+        ],
+      ),
+    );
   }
 
   final List<BottomNavigationBarItem> _navItems = const [
