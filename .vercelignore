@@ -1,0 +1,25 @@
+# Ignore Flutter and mobile app files from Vercel deployment
+.dart_tool/
+.vscode/
+android/
+build/
+ios/
+lib/
+linux/
+macos/
+test/
+web/
+windows/
+assets/
+.idea/
+
+# Ignore Dart/Flutter specific files
+*.dart
+pubspec.yaml
+pubspec.lock
+.metadata
+.flutter-plugins
+.flutter-plugins-dependencies
+
+# Only allow backend folder and vercel.json
+# (implicitly, everything not ignored is included)
