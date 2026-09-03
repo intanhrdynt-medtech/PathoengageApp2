@@ -4,6 +4,7 @@ import 'package:fp_pemrograman/service/auth_service.dart';
 import 'package:fp_pemrograman/screens/login_screen.dart';
 import 'package:fp_pemrograman/screens/admin_verification_screen.dart';
 import 'package:fp_pemrograman/screens/admin_users_screen.dart';
+import 'package:fp_pemrograman/service/api_service.dart';
 
 class AdminDashboardScreen extends StatefulWidget {
   const AdminDashboardScreen({Key? key}) : super(key: key);
@@ -20,6 +21,34 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     const AdminVerificationScreen(),
     const AdminUsersScreen(),
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    _checkPendingVerifications();
+  }
+
+  Future<void> _checkPendingVerifications() async {
+    final api = ApiService();
+    final pending = await api.getPendingVerifications();
+    if (pending.isNotEmpty && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Terdapat ${pending.length} pengajuan yang butuh verifikasi!'),
+          backgroundColor: AppColors.accentRed,
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 5),
+          action: SnackBarAction(
+            label: 'LIHAT',
+            textColor: Colors.white,
+            onPressed: () {
+              setState(() => _selectedIndex = 0);
+            },
+          ),
+        ),
+      );
+    }
+  }
 
   final List<BottomNavigationBarItem> _navItems = const [
     BottomNavigationBarItem(

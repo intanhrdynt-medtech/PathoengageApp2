@@ -547,5 +547,80 @@ class ApiService {
     }
     return {'exists': false};
   }
+
+  // --- ADMIN: PROFILE UPDATE ---
+  Future<bool> adminUpdateUserProfile(int uid, Map<String, dynamic> data) async {
+    final token = await _getToken();
+    if (token == null) return false;
+    try {
+      final response = await http.patch(
+        Uri.parse('$baseUrl/admin/users/$uid/profile'),
+        headers: _buildHeaders(token),
+        body: jsonEncode(data),
+      );
+      return response.statusCode == 200;
+    } catch (e) {
+      debugPrint('Error updating user profile: $e');
+    }
+    return false;
+  }
+
+  // --- PENGABDIAN MASYARAKAT ---
+  Future<List<dynamic>> getPengabdian() async {
+    final token = await _getToken();
+    if (token == null) return [];
+    try {
+      final response = await http.get(Uri.parse('$baseUrl/pengabdian'), headers: _buildHeaders(token));
+      if (response.statusCode == 200) return jsonDecode(response.body);
+    } catch (e) {
+      debugPrint('Error fetching pengabdian: $e');
+    }
+    return [];
+  }
+
+  Future<bool> addPengabdian(Map<String, dynamic> data) async {
+    final token = await _getToken();
+    if (token == null) return false;
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/pengabdian'),
+        headers: _buildHeaders(token),
+        body: jsonEncode(data),
+      );
+      return response.statusCode == 201;
+    } catch (e) {
+      debugPrint('Error adding pengabdian: $e');
+    }
+    return false;
+  }
+
+  // --- PRESTASI ---
+  Future<List<dynamic>> getPrestasi() async {
+    final token = await _getToken();
+    if (token == null) return [];
+    try {
+      final response = await http.get(Uri.parse('$baseUrl/prestasi'), headers: _buildHeaders(token));
+      if (response.statusCode == 200) return jsonDecode(response.body);
+    } catch (e) {
+      debugPrint('Error fetching prestasi: $e');
+    }
+    return [];
+  }
+
+  Future<bool> addPrestasi(Map<String, dynamic> data) async {
+    final token = await _getToken();
+    if (token == null) return false;
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/prestasi'),
+        headers: _buildHeaders(token),
+        body: jsonEncode(data),
+      );
+      return response.statusCode == 201;
+    } catch (e) {
+      debugPrint('Error adding prestasi: $e');
+    }
+    return false;
+  }
 }
 

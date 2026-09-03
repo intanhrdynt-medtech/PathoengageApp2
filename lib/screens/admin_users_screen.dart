@@ -217,6 +217,67 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
     );
   }
 
+  void _showEditAcademicProfileDialog(Map<String, dynamic> user) {
+    final dosenWaliCtrl = TextEditingController(text: user['dosen_wali'] ?? '');
+    final pembimbing1Ctrl = TextEditingController(text: user['pembimbing_1'] ?? '');
+    final pembimbing2Ctrl = TextEditingController(text: user['pembimbing_2'] ?? '');
+    final retrospektifCtrl = TextEditingController(text: user['pembimbing_retrospektif'] ?? '');
+    bool isLoading = false;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: Text('Profil Akademik: ${user['full_name']}',
+              style: const TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold, fontSize: 16)),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _dialogField(dosenWaliCtrl, 'Dosen Wali', Icons.person),
+                const SizedBox(height: 10),
+                _dialogField(pembimbing1Ctrl, 'Pembimbing 1', Icons.person_outline),
+                const SizedBox(height: 10),
+                _dialogField(pembimbing2Ctrl, 'Pembimbing 2', Icons.person_outline),
+                const SizedBox(height: 10),
+                _dialogField(retrospektifCtrl, 'Pembimbing Retrospektif', Icons.history),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Batal')),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.primaryPurple, foregroundColor: Colors.white),
+              onPressed: () async {
+                setDialogState(() => isLoading = true);
+                final ok = await _api.adminUpdateUserProfile(user['id'], {
+                  'dosen_wali': dosenWaliCtrl.text.trim(),
+                  'pembimbing_1': pembimbing1Ctrl.text.trim(),
+                  'pembimbing_2': pembimbing2Ctrl.text.trim(),
+                  'pembimbing_retrospektif': retrospektifCtrl.text.trim(),
+                });
+                if (mounted) Navigator.pop(ctx);
+                if (ok) {
+                  _loadData();
+                  ScaffoldMessenger.of(context)
+                      .showSnackBar(const SnackBar(content: Text('Profil Akademik PPDS diperbarui!')));
+                } else {
+                  ScaffoldMessenger.of(context)
+                      .showSnackBar(const SnackBar(content: Text('Gagal memperbarui Profil Akademik.')));
+                }
+              },
+              child: isLoading
+                  ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                  : const Text('Simpan'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   void _showAddTaskDialog(Map<String, dynamic> user) {
     final titleCtrl = TextEditingController();
     final descCtrl = TextEditingController();
@@ -578,6 +639,8 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
                                     Colors.deepOrange, () => _showWarningDialog(u)),
                                 _actionButton(Icons.medical_services_outlined, 'Ujian Organ',
                                     Colors.teal, () => _showAddOrganExamDialog(u)),
+                                _actionButton(Icons.school, 'Profil Akademik',
+                                    Colors.indigo, () => _showEditAcademicProfileDialog(u)),
                                 _actionButton(Icons.edit, 'Edit', AppColors.primaryPurple,
                                     () => _showEditUserDialog(u)),
                                 _actionButton(Icons.delete_outline, 'Hapus', Colors.red,

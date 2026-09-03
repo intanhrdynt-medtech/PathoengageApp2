@@ -152,6 +152,28 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
             const SizedBox(height: 24),
 
+            // Survey Semester Reminder Card
+            Card(
+              elevation: 0,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16), side: BorderSide(color: Colors.orange.shade200)),
+              color: Colors.orange.shade50,
+              child: ListTile(
+                leading: const Icon(Icons.assignment, color: Colors.orange, size: 36),
+                title: const Text('Survey Semester', style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold, fontSize: 14)),
+                subtitle: const Text('Jangan lupa isi survey evaluasi semester ini.', style: TextStyle(fontSize: 12)),
+                trailing: ElevatedButton(
+                  style: ElevatedButton.styleFrom(backgroundColor: Colors.orange, foregroundColor: Colors.white),
+                  onPressed: () {
+                    // TODO: Ganti dengan URL survey yang sebenarnya
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Link survey belum tersedia.')));
+                  },
+                  child: const Text('Isi Sekarang'),
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 16),
+
             // Kewenangan Medis Card
             _buildPrivilegeCard(userProfile?['phase']),
 
