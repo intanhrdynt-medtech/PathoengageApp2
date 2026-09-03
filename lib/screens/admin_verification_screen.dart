@@ -46,8 +46,8 @@ class _AdminVerificationScreenState extends State<AdminVerificationScreen> {
   Future<void> _verifyItem(String typeCategory, int id, String action) async {
     bool success = false;
     if (typeCategory == 'journal') {
-      final status = action == 'approve' ? 'approved' : 'rejected';
-      success = await _api.adminReviewJournal(id, status, 'Verifikasi dari Admin Dashboard');
+      // Backend expects 'approve' or 'reject' as action
+      success = await _api.adminReviewJournal(id, action, 'Verifikasi dari Admin Dashboard');
     } else {
       success = await _api.verifyTask(typeCategory, id, action);
     }

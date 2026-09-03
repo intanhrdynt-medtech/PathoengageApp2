@@ -326,7 +326,7 @@ class ApiService {
       final response = await http.patch(
         Uri.parse('$baseUrl/admin/journal-readings/$jid/review'),
         headers: _buildHeaders(token),
-        body: jsonEncode({'status': status, 'catatan_admin': catatan}),
+        body: jsonEncode({'action': status, 'catatan_admin': catatan}),
       );
       return response.statusCode == 200;
     } catch (e) {
