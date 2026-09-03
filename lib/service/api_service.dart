@@ -192,6 +192,31 @@ class ApiService {
     return null;
   }
 
+  Future<Map<String, dynamic>?> createUserWithRole(
+      String email, String password, String fullName, String role) async {
+    final token = await _getToken();
+    if (token == null) return null;
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/admin/users'),
+        headers: _buildHeaders(token),
+        body: jsonEncode({
+          'email': email,
+          'password': password,
+          'full_name': fullName,
+          'nim': '-',
+          'role': role,
+        }),
+      );
+      final data = jsonDecode(response.body);
+      if (response.statusCode == 201 || response.statusCode == 200) return data;
+      return {'error': data['error'] ?? 'Gagal membuat user'};
+    } catch (e) {
+      debugPrint('Error creating user with role: $e');
+    }
+    return null;
+  }
+
   Future<Map<String, dynamic>?> createPpdsUser(
       String email, String password, String fullName, String nim) async {
     final token = await _getToken();
