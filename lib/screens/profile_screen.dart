@@ -179,7 +179,71 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                 _buildInfoRow(Icons.location_city_outlined, 'Institusi',
                                     'Universitas Airlangga'),
                               ]),
-                              const SizedBox(height: 24),
+                              const SizedBox(height: 12),
+
+                              // ── Dosen Wali & Pembimbing Card ──
+                              Container(
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  borderRadius: BorderRadius.circular(16),
+                                  boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.06), blurRadius: 10, offset: const Offset(0, 4))],
+                                ),
+                                padding: const EdgeInsets.all(16),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      children: [
+                                        const Icon(Icons.people_alt_outlined, color: AppColors.primaryPurple, size: 18),
+                                        const SizedBox(width: 8),
+                                        const Text('Pembimbing & Pengajar',
+                                            style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold, fontSize: 13, color: AppColors.primaryPurple)),
+                                      ],
+                                    ),
+                                    const Divider(height: 20),
+                                    _buildInfoRow(Icons.person_outline, 'Dosen Wali',
+                                        _user?['dosen_wali'] ?? '-'),
+                                    _buildInfoRow(Icons.school_outlined, 'Pembimbing 1',
+                                        _user?['pembimbing_1'] ?? '-'),
+                                    _buildInfoRow(Icons.school_outlined, 'Pembimbing 2',
+                                        _user?['pembimbing_2'] ?? '-'),
+                                    _buildInfoRow(Icons.history_edu_outlined, 'Pemb. Retrospektif',
+                                        _user?['pembimbing_retrospektif'] ?? '-'),
+                                  ],
+                                ),
+                              ),
+
+                              // ── SP/Warning Badge (jika aktif) ──
+                              if (_user?['warning_active'] == true) ...[
+                                const SizedBox(height: 12),
+                                Container(
+                                  width: double.infinity,
+                                  padding: const EdgeInsets.all(14),
+                                  decoration: BoxDecoration(
+                                    color: Colors.red.shade50,
+                                    borderRadius: BorderRadius.circular(14),
+                                    border: Border.all(color: Colors.red.shade300, width: 1.5),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      const Icon(Icons.warning_amber_rounded, color: Colors.red, size: 22),
+                                      const SizedBox(width: 10),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            const Text('Status Peringatan Aktif',
+                                                style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold, fontSize: 13, color: Colors.red)),
+                                            const SizedBox(height: 2),
+                                            Text(_user?['warning_message'] ?? 'Anda sedang dalam status SP. Hubungi koordinator.',
+                                                style: TextStyle(fontFamily: 'Poppins', fontSize: 11, color: Colors.red.shade700)),
+                                          ],
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
                               // Logout Button
                               SizedBox(
                                 width: double.infinity,
