@@ -70,7 +70,7 @@ class _EvaluatorScreenState extends State<EvaluatorScreen>
 
   void _showJournalReviewDialog(Map<String, dynamic> journal) {
     final catatanCtrl = TextEditingController(text: journal['catatan_admin'] ?? '');
-    String selectedStatus = journal['status'] ?? 'pending';
+    String selectedStatus = 'approve'; // default ke approve
     bool isLoading = false;
 
     showDialog(
@@ -93,9 +93,9 @@ class _EvaluatorScreenState extends State<EvaluatorScreen>
                 const SizedBox(height: 6),
                 Row(
                   children: [
-                    _statusChip('approved', 'Setujui', Colors.green, selectedStatus, (v) => setDlg(() => selectedStatus = v)),
+                    _statusChip('approve', 'Setujui', Colors.green, selectedStatus, (v) => setDlg(() => selectedStatus = v)),
                     const SizedBox(width: 8),
-                    _statusChip('rejected', 'Tolak', Colors.red, selectedStatus, (v) => setDlg(() => selectedStatus = v)),
+                    _statusChip('reject', 'Tolak', Colors.red, selectedStatus, (v) => setDlg(() => selectedStatus = v)),
                   ],
                 ),
                 const SizedBox(height: 12),
@@ -114,7 +114,7 @@ class _EvaluatorScreenState extends State<EvaluatorScreen>
             TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Batal')),
             ElevatedButton(
               style: ElevatedButton.styleFrom(
-                  backgroundColor: selectedStatus == 'approved' ? Colors.green : Colors.red,
+                  backgroundColor: selectedStatus == 'approve' ? Colors.green : Colors.red,
                   foregroundColor: Colors.white),
               onPressed: isLoading
                   ? null
@@ -126,11 +126,89 @@ class _EvaluatorScreenState extends State<EvaluatorScreen>
                         Navigator.pop(ctx);
                         _loadData();
                         ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text('Journal berhasil di-${selectedStatus == 'approved' ? 'setujui' : 'tolak'}!')));
+                            SnackBar(content: Text('Journal berhasil di-${selectedStatus == 'approve' ? 'setujui' : 'tolak'}!')));
                       } else {
                         setDlg(() => isLoading = false);
                         ScaffoldMessenger.of(ctx)
                             .showSnackBar(const SnackBar(content: Text('Gagal update status')));
+                      }
+                    },
+              child: isLoading
+                  ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                  : const Text('Simpan'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showPenelitianReviewDialog(Map<String, dynamic> pen) {
+    final catatanCtrl = TextEditingController();
+    String selectedStatus = 'approved';
+    bool isLoading = false;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDlg) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+          title: const Text('Review Penelitian',
+              style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold, fontSize: 16)),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _infoRow('Judul', pen['judul'] ?? '-'),
+                _infoRow('Pengaju', pen['user_name'] ?? '-'),
+                _infoRow('Jenis', pen['jenis'] ?? '-'),
+                _infoRow('Pembimbing', pen['pembimbing_1'] ?? '-'),
+                const SizedBox(height: 14),
+                const Text('Keputusan', style: TextStyle(fontWeight: FontWeight.w600, fontFamily: 'Poppins')),
+                const SizedBox(height: 6),
+                Wrap(
+                  spacing: 8,
+                  children: [
+                    _statusChip('approved', 'Setujui', Colors.green, selectedStatus, (v) => setDlg(() => selectedStatus = v)),
+                    _statusChip('revisi_1', 'Revisi 1', Colors.orange, selectedStatus, (v) => setDlg(() => selectedStatus = v)),
+                    _statusChip('revisi_2', 'Revisi 2', Colors.deepOrange, selectedStatus, (v) => setDlg(() => selectedStatus = v)),
+                    _statusChip('rejected', 'Tolak', Colors.red, selectedStatus, (v) => setDlg(() => selectedStatus = v)),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: catatanCtrl,
+                  maxLines: 3,
+                  decoration: InputDecoration(
+                    labelText: 'Catatan revisi / komentar',
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Batal')),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                  backgroundColor: selectedStatus == 'approved' ? Colors.green : Colors.orange,
+                  foregroundColor: Colors.white),
+              onPressed: isLoading
+                  ? null
+                  : () async {
+                      setDlg(() => isLoading = true);
+                      final ok = await _api.adminUpdatePenelitianStatus(
+                          pen['id'], selectedStatus, catatanCtrl.text.trim());
+                      if (ok && mounted) {
+                        Navigator.pop(ctx);
+                        _loadData();
+                        ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Status penelitian berhasil diupdate!')));
+                      } else {
+                        setDlg(() => isLoading = false);
+                        ScaffoldMessenger.of(ctx)
+                            .showSnackBar(const SnackBar(content: Text('Gagal update status penelitian')));
                       }
                     },
               child: isLoading
@@ -322,9 +400,17 @@ class _EvaluatorScreenState extends State<EvaluatorScreen>
                   Text('Pembimbing: ${p['pembimbing_1']}',
                       style: const TextStyle(fontSize: 12, color: Colors.grey)),
                 const SizedBox(height: 8),
-                const Text(
-                    '⚠️ Hubungi admin untuk mengubah status penelitian ini.',
-                    style: TextStyle(fontSize: 11, color: Colors.grey, fontStyle: FontStyle.italic)),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: ElevatedButton(
+                    onPressed: () => _showPenelitianReviewDialog(p),
+                    style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.blue,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8)),
+                    child: const Text('Review', style: TextStyle(fontSize: 12)),
+                  ),
+                ),
               ],
             ),
           ),

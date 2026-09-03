@@ -552,6 +552,23 @@ class ApiService {
     return false;
   }
 
+  Future<bool> adminUpdatePenelitianStatus(int pid, String status, String catatan) async {
+    final token = await _getToken();
+    if (token == null) return false;
+    try {
+      final response = await http.patch(
+        Uri.parse('$baseUrl/admin/penelitian/$pid/status'),
+        headers: _buildHeaders(token),
+        body: jsonEncode({'status': status, 'catatan': catatan}),
+      );
+      if (response.statusCode == 200) return true;
+      debugPrint('adminUpdatePenelitianStatus error: ${response.statusCode} ${response.body}');
+    } catch (e) {
+      debugPrint('Error updating penelitian status: $e');
+    }
+    return false;
+  }
+
   // --- TOPIC DUPLICATION CHECK ---
   Future<Map<String, dynamic>> checkTopicDuplication(String judul, String jenis) async {
     final token = await _getToken();
