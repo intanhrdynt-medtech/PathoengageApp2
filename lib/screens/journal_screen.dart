@@ -342,22 +342,63 @@ class _JournalScreenState extends State<JournalScreen> with SingleTickerProvider
       itemCount: _allJournals.length,
       itemBuilder: (ctx, i) {
         final j = _allJournals[i];
+        final status = j['status'] ?? 'approved';
         return Card(
           margin: const EdgeInsets.only(bottom: 12),
-          child: ListTile(
-            title: Text(j['judul'] ?? '', style: const TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold, fontSize: 13)),
-            subtitle: Text('Oleh: ', style: const TextStyle(fontFamily: 'Poppins', fontSize: 11)),
-            trailing: j['bukti_url'] != null && j['bukti_url'].toString().isNotEmpty
-                ? IconButton(
-                    icon: const Icon(Icons.link, color: AppColors.primaryPurple),
-                    onPressed: () => _openUrl(j['bukti_url']),
-                  )
-                : null,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          child: Padding(
+            padding: const EdgeInsets.all(14),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        j['judul'] ?? '-',
+                        style: const TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold, fontSize: 13),
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: _statusColor(status).withOpacity(0.12),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        _statusLabel(status),
+                        style: TextStyle(fontSize: 10, color: _statusColor(status), fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Oleh: ${j['user_name'] ?? j['penulis'] ?? '-'}',
+                  style: const TextStyle(fontFamily: 'Poppins', fontSize: 11, color: Colors.grey),
+                ),
+                if (j['nama_jurnal'] != null && j['nama_jurnal'].toString().isNotEmpty)
+                  Text(
+                    'Sumber: ${j['nama_jurnal']}',
+                    style: const TextStyle(fontFamily: 'Poppins', fontSize: 11, color: Colors.grey),
+                  ),
+                if (j['bukti_url'] != null && j['bukti_url'].toString().isNotEmpty)
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: TextButton.icon(
+                      onPressed: () => _openUrl(j['bukti_url']),
+                      icon: const Icon(Icons.link, size: 14),
+                      label: const Text('Bukti', style: TextStyle(fontSize: 11)),
+                    ),
+                  ),
+              ],
+            ),
           ),
         );
       },
     );
   }
+
 
   @override
   Widget build(BuildContext context) {
