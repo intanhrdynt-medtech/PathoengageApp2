@@ -326,15 +326,15 @@ class _PenelitianScreenState extends State<PenelitianScreen> with SingleTickerPr
                   ],
                 ),
                 const SizedBox(height: 8),
-                Text('Jenis: ', style: const TextStyle(fontSize: 12, color: Colors.grey)),
-                Text('Pembimbing 1: ', style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                Text('Jenis: ${p['jenis'] ?? '-'}', style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                Text('Pembimbing 1: ${p['pembimbing_1'] ?? '-'}', style: const TextStyle(fontSize: 12, color: Colors.grey)),
                 
                 if (status == 'revisi_1' && p['catatan_revisi1'] != null) ...[
                   const SizedBox(height: 8),
                   Container(
                     padding: const EdgeInsets.all(8),
                     color: Colors.red.shade50,
-                    child: Text('Catatan Revisi 1: ', style: TextStyle(color: Colors.red.shade800, fontSize: 11)),
+                    child: Text('Catatan Revisi 1: ${p['catatan_revisi1']}', style: TextStyle(color: Colors.red.shade800, fontSize: 11)),
                   ),
                 ],
                 if (status == 'revisi_2' && p['catatan_revisi2'] != null) ...[
@@ -342,7 +342,7 @@ class _PenelitianScreenState extends State<PenelitianScreen> with SingleTickerPr
                   Container(
                     padding: const EdgeInsets.all(8),
                     color: Colors.red.shade50,
-                    child: Text('Catatan Revisi 2: ', style: TextStyle(color: Colors.red.shade800, fontSize: 11)),
+                    child: Text('Catatan Revisi 2: ${p['catatan_revisi2']}', style: TextStyle(color: Colors.red.shade800, fontSize: 11)),
                   ),
                 ],
 
@@ -378,16 +378,32 @@ class _PenelitianScreenState extends State<PenelitianScreen> with SingleTickerPr
         final p = _allPenelitian[i];
         return Card(
           margin: const EdgeInsets.only(bottom: 12),
-          child: ListTile(
-            title: Text(p['judul'] ?? '', style: const TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold, fontSize: 13)),
-            subtitle: Column(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          child: Padding(
+            padding: const EdgeInsets.all(14),
+            child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Oleh: ', style: const TextStyle(fontFamily: 'Poppins', fontSize: 11)),
-                Text('Jenis: ', style: const TextStyle(fontFamily: 'Poppins', fontSize: 11, color: Colors.grey)),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(p['judul'] ?? '-', style: const TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold, fontSize: 13)),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: _statusColor(p['status']).withOpacity(0.12),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(_statusLabel(p['status']), style: TextStyle(fontSize: 10, color: _statusColor(p['status']), fontWeight: FontWeight.bold)),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Text('Oleh: ${p['user_name'] ?? '-'}', style: const TextStyle(fontFamily: 'Poppins', fontSize: 11, color: Colors.grey)),
+                Text('Jenis: ${p['jenis'] ?? '-'}', style: const TextStyle(fontFamily: 'Poppins', fontSize: 11, color: Colors.grey)),
               ],
             ),
-            isThreeLine: true,
           ),
         );
       },

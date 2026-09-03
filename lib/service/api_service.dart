@@ -450,10 +450,11 @@ class ApiService {
     final token = await _getToken();
     if (token == null) return [];
     try {
-      final response = await http.get(Uri.parse('\/penelitian'), headers: _buildHeaders(token));
+      final response = await http.get(Uri.parse('$baseUrl/penelitian'), headers: _buildHeaders(token));
       if (response.statusCode == 200) return jsonDecode(response.body);
+      debugPrint('getMyPenelitian error: ${response.statusCode} ${response.body}');
     } catch (e) {
-      debugPrint('Error fetching my penelitian: ');
+      debugPrint('Error fetching my penelitian: $e');
     }
     return [];
   }
@@ -462,10 +463,11 @@ class ApiService {
     final token = await _getToken();
     if (token == null) return [];
     try {
-      final response = await http.get(Uri.parse('\/penelitian/all?q='), headers: _buildHeaders(token));
+      final response = await http.get(Uri.parse('$baseUrl/penelitian/all?q=${Uri.encodeComponent(query)}'), headers: _buildHeaders(token));
       if (response.statusCode == 200) return jsonDecode(response.body);
+      debugPrint('getAllPenelitian error: ${response.statusCode} ${response.body}');
     } catch (e) {
-      debugPrint('Error fetching all penelitian: ');
+      debugPrint('Error fetching all penelitian: $e');
     }
     return [];
   }
@@ -475,13 +477,14 @@ class ApiService {
     if (token == null) return false;
     try {
       final response = await http.post(
-        Uri.parse('\/penelitian'),
+        Uri.parse('$baseUrl/penelitian'),
         headers: _buildHeaders(token),
         body: jsonEncode(data),
       );
-      return response.statusCode == 201;
+      if (response.statusCode == 200 || response.statusCode == 201) return true;
+      debugPrint('submitPenelitian error: ${response.statusCode} ${response.body}');
     } catch (e) {
-      debugPrint('Error submitting penelitian: ');
+      debugPrint('Error submitting penelitian: $e');
     }
     return false;
   }
@@ -491,13 +494,14 @@ class ApiService {
     if (token == null) return false;
     try {
       final response = await http.patch(
-        Uri.parse('\/penelitian/'),
+        Uri.parse('$baseUrl/penelitian/$id'),
         headers: _buildHeaders(token),
         body: jsonEncode(data),
       );
-      return response.statusCode == 200;
+      if (response.statusCode == 200) return true;
+      debugPrint('updatePenelitian error: ${response.statusCode} ${response.body}');
     } catch (e) {
-      debugPrint('Error updating penelitian: ');
+      debugPrint('Error updating penelitian: $e');
     }
     return false;
   }
