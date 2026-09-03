@@ -279,7 +279,10 @@ class ApiService {
         headers: _buildHeaders(token),
         body: jsonEncode(data),
       );
-      return response.statusCode == 201;
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        return true;
+      }
+      debugPrint('Failed to submit journal. Code: ${response.statusCode}, Body: ${response.body}');
     } catch (e) {
       debugPrint('Error submitting journal reading: $e');
     }

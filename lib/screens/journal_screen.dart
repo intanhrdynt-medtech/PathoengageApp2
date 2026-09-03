@@ -164,6 +164,9 @@ class _JournalScreenState extends State<JournalScreen> with SingleTickerProvider
                                               _loadData();
                                               ScaffoldMessenger.of(context).showSnackBar(
                                                   const SnackBar(content: Text('Berhasil diajukan, menunggu ACC admin.')));
+                                            } else if (mounted) {
+                                              ScaffoldMessenger.of(context).showSnackBar(
+                                                  const SnackBar(content: Text('Gagal mengajukan topik. Periksa koneksi/server.')));
                                             }
                                           },
                                           child: const Text('Tetap Ajukan', style: TextStyle(color: Colors.white)),
@@ -187,6 +190,9 @@ class _JournalScreenState extends State<JournalScreen> with SingleTickerProvider
                                 _loadData();
                                 ScaffoldMessenger.of(context).showSnackBar(
                                     const SnackBar(content: Text('Berhasil diajukan, menunggu ACC admin.')));
+                              } else {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(content: Text('Gagal mengajukan topik. Periksa koneksi/server.')));
                               }
                             },
                       child: isSubmitting 

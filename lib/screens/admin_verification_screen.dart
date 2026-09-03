@@ -25,14 +25,33 @@ class _AdminVerificationScreenState extends State<AdminVerificationScreen> {
   Future<void> _loadData() async {
     setState(() => _isLoading = true);
     final items = await _api.getPendingVerifications();
+    
+    // Fetch pending journals and map them to the same format
+    final pendingJournalsRaw = await _api.getAdminJournalReadings('pending');
+    final pendingJournals = pendingJournalsRaw.map((j) => {
+      'id': j['id'],
+      'type_category': 'journal',
+      'user_name': j['penulis'] ?? 'Unknown',
+      'title': j['judul'] ?? '-',
+      'notes': 'Jurnal: ${j['nama_jurnal'] ?? '-'} | Pembimbing: ${j['pembimbing'] ?? '-'}',
+      'evidence_url': j['bukti_url'],
+    }).toList();
+
     setState(() {
-      _pendingItems = items;
+      _pendingItems = [...items, ...pendingJournals];
       _isLoading = false;
     });
   }
 
   Future<void> _verifyItem(String typeCategory, int id, String action) async {
-    final success = await _api.verifyTask(typeCategory, id, action);
+    bool success = false;
+    if (typeCategory == 'journal') {
+      final status = action == 'approve' ? 'approved' : 'rejected';
+      success = await _api.adminReviewJournal(id, status, 'Verifikasi dari Admin Dashboard');
+    } else {
+      success = await _api.verifyTask(typeCategory, id, action);
+    }
+
     if (success) {
       if (mounted) {
         final msg = action == 'approve' ? 'Berhasil diverifikasi! ✅' : 'Pengajuan ditolak ❌';
@@ -52,6 +71,7 @@ class _AdminVerificationScreenState extends State<AdminVerificationScreen> {
       case 'exam': return Icons.quiz;
       case 'academic': return Icons.assignment;
       case 'competency': return Icons.star;
+      case 'journal': return Icons.menu_book;
       default: return Icons.task;
     }
   }
@@ -61,6 +81,7 @@ class _AdminVerificationScreenState extends State<AdminVerificationScreen> {
       case 'exam': return Colors.purple;
       case 'academic': return Colors.blue;
       case 'competency': return Colors.orange;
+      case 'journal': return Colors.indigo;
       default: return AppColors.primaryPurple;
     }
   }
@@ -70,6 +91,7 @@ class _AdminVerificationScreenState extends State<AdminVerificationScreen> {
       case 'exam': return 'Ujian';
       case 'academic': return 'Tugas Akademik';
       case 'competency': return 'Kompetensi';
+      case 'journal': return 'Journal Reading';
       default: return category ?? '-';
     }
   }

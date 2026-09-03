@@ -10,6 +10,7 @@ import 'package:fp_pemrograman/screens/profile_screen.dart';
 import 'package:fp_pemrograman/screens/penelitian_screen.dart';
 import 'package:fp_pemrograman/screens/pengabdian_screen.dart';
 import 'package:fp_pemrograman/screens/prestasi_screen.dart';
+import 'package:fp_pemrograman/screens/journal_screen.dart';
 import 'package:fp_pemrograman/widgets/responsive_wrapper.dart';
 
 class DashboardScreen extends StatefulWidget {
@@ -235,10 +236,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       color: const Color(0xFF16A085),
                       onTap: () => setState(() => _selectedIndex = 4),
                     ),
-                  ],
-                );
-              }
-
+                    _buildMenuCard(
+                      icon: Icons.menu_book,
+                      title: 'Journal\nReading',
+                      subtitle: 'Bacaan Jurnal',
+                      color: Colors.indigo,
+                      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const JournalScreen())),
+                    ),
                     _buildMenuCard(
                       icon: Icons.science,
                       title: 'Penelitian',
@@ -260,6 +264,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       color: Colors.amber,
                       onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const PrestasiScreen())),
                     ),
+                  ],
+                );
+              },
             ),
 
             const SizedBox(height: 24),
