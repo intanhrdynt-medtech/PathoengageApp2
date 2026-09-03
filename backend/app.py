@@ -7,7 +7,9 @@ from dotenv import load_dotenv
 import jwt
 from werkzeug.security import generate_password_hash, check_password_hash
 
-from models import db, User, Reminder, CompetencyLog, Exam, AcademicTask, ExternalRotation
+from models import (db, User, Reminder, CompetencyLog, Exam, AcademicTask, ExternalRotation,
+                    JournalReadingSubmission, Penelitian, PengabdianMasyarakat, Prestasi,
+                    AdminNotification, Survey, OrganExam)
 
 load_dotenv()
 SECRET_KEY = os.getenv('SECRET_KEY', 'dev-secret-ppds-pa-unair')
@@ -88,6 +90,13 @@ def user_dict(user):
         'phase': user.phase,
         'current_semester': user.current_semester,
         'role': user.role,
+        'angkatan': getattr(user, 'angkatan', None),
+        'dosen_wali': getattr(user, 'dosen_wali', None),
+        'pembimbing_1': getattr(user, 'pembimbing_1', None),
+        'pembimbing_2': getattr(user, 'pembimbing_2', None),
+        'pembimbing_retrospektif': getattr(user, 'pembimbing_retrospektif', None),
+        'warning_active': getattr(user, 'warning_active', False),
+        'warning_message': getattr(user, 'warning_message', None),
     }
 
 
@@ -280,6 +289,18 @@ def run_seed():
         return jsonify({'status': 'success', 'message': 'Database seeded!'})
     except Exception as e:
         db.session.rollback()
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+@app.route('/admin/migrate', methods=['POST'])
+def run_migrate():
+    data = request.get_json() or {}
+    if data.get('secret') != 'pathoengage-seed-2026':
+        return jsonify({'error': 'Unauthorized'}), 403
+    try:
+        db.create_all()
+        return jsonify({'status': 'success', 'message': 'Database migrated (new tables created)!'})
+    except Exception as e:
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
 
@@ -900,6 +921,567 @@ def seed_admin():
     db.session.add(admin)
     db.session.commit()
     return jsonify({'status': 'created', 'email': email}), 201
+
+
+# ── Journal Reading Submission ───────────────────────────────────────────────
+
+def jr_dict(j, include_user=False):
+    d = {
+        'id': j.id,
+        'user_id': j.user_id,
+        'judul': j.judul,
+        'penulis': j.penulis,
+        'nama_jurnal': j.nama_jurnal,
+        'pembimbing': j.pembimbing,
+        'penguji': j.penguji,
+        'tanggal_presentasi': j.tanggal_presentasi.isoformat() if j.tanggal_presentasi else None,
+        'jenis': j.jenis,
+        'status': j.status,
+        'catatan_admin': j.catatan_admin,
+        'bukti_url': j.bukti_url,
+        'bukti_submitted': j.bukti_submitted,
+        'approved_at': j.approved_at.isoformat() if j.approved_at else None,
+        'created_at': j.created_at.isoformat() if j.created_at else None,
+    }
+    if include_user:
+        u = User.query.get(j.user_id)
+        d['user_name'] = u.full_name if u else '-'
+        d['user_nim'] = u.nim if u else '-'
+    return d
+
+
+@app.route('/journal-readings', methods=['GET'])
+@auth_required
+def get_my_journal_readings():
+    items = JournalReadingSubmission.query.filter_by(user_id=request.user.id).order_by(JournalReadingSubmission.created_at.desc()).all()
+    return jsonify([jr_dict(j) for j in items])
+
+
+@app.route('/journal-readings', methods=['POST'])
+@auth_required
+def submit_journal_reading():
+    data = request.get_json() or {}
+    if not data.get('judul'):
+        return jsonify({'error': 'Judul wajib diisi'}), 400
+    j = JournalReadingSubmission(
+        user_id=request.user.id,
+        judul=data.get('judul'),
+        penulis=data.get('penulis'),
+        nama_jurnal=data.get('nama_jurnal'),
+        pembimbing=data.get('pembimbing'),
+        penguji=data.get('penguji'),
+        tanggal_presentasi=datetime.datetime.fromisoformat(data['tanggal_presentasi']) if data.get('tanggal_presentasi') else None,
+        jenis=data.get('jenis', 'Journal Reading'),
+        status='pending',
+    )
+    db.session.add(j)
+    db.session.flush()
+    # Kirim notifikasi ke admin
+    notif = AdminNotification(
+        title='Pengajuan Journal Reading Baru',
+        message=f'{request.user.full_name} mengajukan: {j.judul}',
+        type='journal',
+        ref_id=j.id,
+        ref_type='journal',
+    )
+    db.session.add(notif)
+    db.session.commit()
+    return jsonify(jr_dict(j)), 201
+
+
+@app.route('/journal-readings/<int:jid>/bukti', methods=['PATCH'])
+@auth_required
+def submit_bukti_journal(jid):
+    j = JournalReadingSubmission.query.filter_by(id=jid, user_id=request.user.id).first()
+    if not j:
+        return jsonify({'error': 'Tidak ditemukan'}), 404
+    if j.status != 'approved':
+        return jsonify({'error': 'Hanya bisa upload bukti jika sudah diapprove'}), 400
+    data = request.get_json() or {}
+    j.bukti_url = data.get('bukti_url', j.bukti_url)
+    j.bukti_submitted = True
+    db.session.commit()
+    return jsonify(jr_dict(j))
+
+
+@app.route('/journal-readings/all', methods=['GET'])
+@auth_required
+def get_all_journal_readings():
+    """Semua PPDS bisa lihat daftar ini untuk cek duplikasi"""
+    q = request.args.get('q', '').strip().lower()
+    query = JournalReadingSubmission.query.filter(
+        JournalReadingSubmission.status == 'approved'
+    )
+    if q:
+        query = query.filter(JournalReadingSubmission.judul.ilike(f'%{q}%'))
+    items = query.order_by(JournalReadingSubmission.created_at.desc()).all()
+    return jsonify([jr_dict(j, include_user=True) for j in items])
+
+
+@app.route('/admin/journal-readings', methods=['GET'])
+@admin_required
+def admin_list_journal_readings():
+    status_filter = request.args.get('status', 'pending')
+    items = JournalReadingSubmission.query.filter_by(status=status_filter).order_by(JournalReadingSubmission.created_at.desc()).all()
+    return jsonify([jr_dict(j, include_user=True) for j in items])
+
+
+@app.route('/admin/journal-readings/<int:jid>/review', methods=['PATCH'])
+@admin_required
+def admin_review_journal(jid):
+    j = JournalReadingSubmission.query.get(jid)
+    if not j:
+        return jsonify({'error': 'Tidak ditemukan'}), 404
+    data = request.get_json() or {}
+    action = data.get('action')  # 'approve' or 'reject'
+    if action == 'approve':
+        j.status = 'approved'
+        j.approved_by = request.user.id
+        j.approved_at = datetime.datetime.utcnow()
+    elif action == 'reject':
+        j.status = 'rejected'
+    else:
+        return jsonify({'error': 'action harus approve atau reject'}), 400
+    j.catatan_admin = data.get('catatan_admin', j.catatan_admin)
+    db.session.commit()
+    return jsonify(jr_dict(j))
+
+
+# ── Penelitian ────────────────────────────────────────────────────────────────
+
+def pen_dict(p, include_user=False):
+    d = {
+        'id': p.id,
+        'user_id': p.user_id,
+        'judul': p.judul,
+        'jenis': p.jenis,
+        'pembimbing_1': p.pembimbing_1,
+        'pembimbing_2': p.pembimbing_2,
+        'pembimbing_retrospektif': p.pembimbing_retrospektif,
+        'status': p.status,
+        'dokumen_proposal_url': p.dokumen_proposal_url,
+        'dokumen_revisi1_url': p.dokumen_revisi1_url,
+        'catatan_revisi1': p.catatan_revisi1,
+        'dokumen_revisi2_url': p.dokumen_revisi2_url,
+        'catatan_revisi2': p.catatan_revisi2,
+        'dokumen_final_url': p.dokumen_final_url,
+        'link_publikasi': p.link_publikasi,
+        'loa_url': p.loa_url,
+        'nomor_etik': p.nomor_etik,
+        'ethical_clearance_url': p.ethical_clearance_url,
+        'target_semester': p.target_semester,
+        'notes': p.notes,
+        'created_at': p.created_at.isoformat() if p.created_at else None,
+        'updated_at': p.updated_at.isoformat() if p.updated_at else None,
+    }
+    if include_user:
+        u = User.query.get(p.user_id)
+        d['user_name'] = u.full_name if u else '-'
+        d['user_nim'] = u.nim if u else '-'
+    return d
+
+
+@app.route('/penelitian', methods=['GET'])
+@auth_required
+def get_penelitian():
+    items = Penelitian.query.filter_by(user_id=request.user.id).order_by(Penelitian.created_at.desc()).all()
+    return jsonify([pen_dict(p) for p in items])
+
+
+@app.route('/penelitian', methods=['POST'])
+@auth_required
+def add_penelitian():
+    data = request.get_json() or {}
+    if not data.get('judul'):
+        return jsonify({'error': 'Judul wajib diisi'}), 400
+    p = Penelitian(
+        user_id=request.user.id,
+        judul=data.get('judul'),
+        jenis=data.get('jenis'),
+        pembimbing_1=data.get('pembimbing_1'),
+        pembimbing_2=data.get('pembimbing_2'),
+        pembimbing_retrospektif=data.get('pembimbing_retrospektif'),
+        target_semester=data.get('target_semester'),
+        notes=data.get('notes'),
+        status='draft',
+    )
+    db.session.add(p)
+    db.session.flush()
+    notif = AdminNotification(
+        title='Penelitian Baru Disubmit',
+        message=f'{request.user.full_name} menambahkan penelitian: {p.judul}',
+        type='penelitian',
+        ref_id=p.id,
+        ref_type='penelitian',
+    )
+    db.session.add(notif)
+    db.session.commit()
+    return jsonify(pen_dict(p)), 201
+
+
+@app.route('/penelitian/<int:pid>', methods=['PATCH'])
+@auth_required
+def update_penelitian(pid):
+    p = Penelitian.query.filter_by(id=pid, user_id=request.user.id).first()
+    if not p:
+        return jsonify({'error': 'Tidak ditemukan'}), 404
+    data = request.get_json() or {}
+    for field in ['judul', 'jenis', 'pembimbing_1', 'pembimbing_2', 'pembimbing_retrospektif',
+                  'status', 'dokumen_proposal_url', 'dokumen_revisi1_url', 'catatan_revisi1',
+                  'dokumen_revisi2_url', 'catatan_revisi2', 'dokumen_final_url',
+                  'link_publikasi', 'loa_url', 'nomor_etik', 'ethical_clearance_url',
+                  'target_semester', 'notes']:
+        if field in data:
+            setattr(p, field, data[field])
+    db.session.commit()
+    return jsonify(pen_dict(p))
+
+
+@app.route('/penelitian/all', methods=['GET'])
+@auth_required
+def get_all_penelitian():
+    q = request.args.get('q', '').strip()
+    query = Penelitian.query
+    if q:
+        query = query.filter(Penelitian.judul.ilike(f'%{q}%'))
+    items = query.order_by(Penelitian.created_at.desc()).all()
+    return jsonify([pen_dict(p, include_user=True) for p in items])
+
+
+@app.route('/admin/penelitian/<int:pid>/status', methods=['PATCH'])
+@admin_required
+def admin_update_penelitian_status(pid):
+    p = Penelitian.query.get(pid)
+    if not p:
+        return jsonify({'error': 'Tidak ditemukan'}), 404
+    data = request.get_json() or {}
+    for field in ['status', 'catatan_revisi1', 'catatan_revisi2', 'notes']:
+        if field in data:
+            setattr(p, field, data[field])
+    db.session.commit()
+    return jsonify(pen_dict(p, include_user=True))
+
+
+# ── Pengabdian Masyarakat ─────────────────────────────────────────────────────
+
+def pgb_dict(p):
+    return {
+        'id': p.id,
+        'nama_kegiatan': p.nama_kegiatan,
+        'tanggal': p.tanggal.isoformat() if p.tanggal else None,
+        'lokasi': p.lokasi,
+        'deskripsi': p.deskripsi,
+        'bukti_url': p.bukti_url,
+        'created_at': p.created_at.isoformat() if p.created_at else None,
+    }
+
+
+@app.route('/pengabdian', methods=['GET'])
+@auth_required
+def get_pengabdian():
+    items = PengabdianMasyarakat.query.filter_by(user_id=request.user.id).order_by(PengabdianMasyarakat.created_at.desc()).all()
+    return jsonify([pgb_dict(p) for p in items])
+
+
+@app.route('/pengabdian', methods=['POST'])
+@auth_required
+def add_pengabdian():
+    data = request.get_json() or {}
+    if not data.get('nama_kegiatan'):
+        return jsonify({'error': 'Nama kegiatan wajib diisi'}), 400
+    p = PengabdianMasyarakat(
+        user_id=request.user.id,
+        nama_kegiatan=data.get('nama_kegiatan'),
+        tanggal=datetime.datetime.fromisoformat(data['tanggal']) if data.get('tanggal') else None,
+        lokasi=data.get('lokasi'),
+        deskripsi=data.get('deskripsi'),
+        bukti_url=data.get('bukti_url'),
+    )
+    db.session.add(p)
+    db.session.commit()
+    return jsonify(pgb_dict(p)), 201
+
+
+@app.route('/pengabdian/<int:pid>', methods=['PATCH', 'DELETE'])
+@auth_required
+def update_delete_pengabdian(pid):
+    p = PengabdianMasyarakat.query.filter_by(id=pid, user_id=request.user.id).first()
+    if not p:
+        return jsonify({'error': 'Tidak ditemukan'}), 404
+    if request.method == 'DELETE':
+        db.session.delete(p)
+        db.session.commit()
+        return jsonify({'message': 'Deleted'})
+    data = request.get_json() or {}
+    for field in ['nama_kegiatan', 'lokasi', 'deskripsi', 'bukti_url']:
+        if field in data:
+            setattr(p, field, data[field])
+    if 'tanggal' in data and data['tanggal']:
+        p.tanggal = datetime.datetime.fromisoformat(data['tanggal'])
+    db.session.commit()
+    return jsonify(pgb_dict(p))
+
+
+# ── Prestasi ──────────────────────────────────────────────────────────────────
+
+def prs_dict(p):
+    return {
+        'id': p.id,
+        'nama_prestasi': p.nama_prestasi,
+        'tingkat': p.tingkat,
+        'tahun': p.tahun,
+        'deskripsi': p.deskripsi,
+        'sertifikat_url': p.sertifikat_url,
+        'created_at': p.created_at.isoformat() if p.created_at else None,
+    }
+
+
+@app.route('/prestasi', methods=['GET'])
+@auth_required
+def get_prestasi():
+    items = Prestasi.query.filter_by(user_id=request.user.id).order_by(Prestasi.created_at.desc()).all()
+    return jsonify([prs_dict(p) for p in items])
+
+
+@app.route('/prestasi', methods=['POST'])
+@auth_required
+def add_prestasi():
+    data = request.get_json() or {}
+    if not data.get('nama_prestasi'):
+        return jsonify({'error': 'Nama prestasi wajib diisi'}), 400
+    p = Prestasi(
+        user_id=request.user.id,
+        nama_prestasi=data.get('nama_prestasi'),
+        tingkat=data.get('tingkat'),
+        tahun=data.get('tahun'),
+        deskripsi=data.get('deskripsi'),
+        sertifikat_url=data.get('sertifikat_url'),
+    )
+    db.session.add(p)
+    db.session.commit()
+    return jsonify(prs_dict(p)), 201
+
+
+@app.route('/prestasi/<int:pid>', methods=['PATCH', 'DELETE'])
+@auth_required
+def update_delete_prestasi(pid):
+    p = Prestasi.query.filter_by(id=pid, user_id=request.user.id).first()
+    if not p:
+        return jsonify({'error': 'Tidak ditemukan'}), 404
+    if request.method == 'DELETE':
+        db.session.delete(p)
+        db.session.commit()
+        return jsonify({'message': 'Deleted'})
+    data = request.get_json() or {}
+    for field in ['nama_prestasi', 'tingkat', 'tahun', 'deskripsi', 'sertifikat_url']:
+        if field in data:
+            setattr(p, field, data[field])
+    db.session.commit()
+    return jsonify(prs_dict(p))
+
+
+# ── Ujian Organ ───────────────────────────────────────────────────────────────
+
+def organ_exam_dict(e):
+    return {
+        'id': e.id,
+        'user_id': e.user_id,
+        'nama_ujian': e.nama_ujian,
+        'organ': e.organ,
+        'penguji': e.penguji,
+        'tanggal': e.tanggal.isoformat() if e.tanggal else None,
+        'hasil': e.hasil,
+        'nilai': e.nilai,
+        'catatan': e.catatan,
+        'created_at': e.created_at.isoformat() if e.created_at else None,
+    }
+
+
+@app.route('/organ-exams', methods=['GET'])
+@auth_required
+def get_organ_exams():
+    items = OrganExam.query.filter_by(user_id=request.user.id).order_by(OrganExam.created_at.desc()).all()
+    return jsonify([organ_exam_dict(e) for e in items])
+
+
+@app.route('/admin/organ-exams', methods=['POST'])
+@admin_required
+def admin_add_organ_exam():
+    data = request.get_json() or {}
+    user_id = data.get('user_id')
+    if not user_id or not data.get('nama_ujian'):
+        return jsonify({'error': 'user_id dan nama_ujian wajib diisi'}), 400
+    e = OrganExam(
+        user_id=user_id,
+        nama_ujian=data.get('nama_ujian'),
+        organ=data.get('organ'),
+        penguji=data.get('penguji'),
+        tanggal=datetime.datetime.fromisoformat(data['tanggal']) if data.get('tanggal') else None,
+        hasil=data.get('hasil', 'terjadwal'),
+        nilai=data.get('nilai'),
+        catatan=data.get('catatan'),
+    )
+    db.session.add(e)
+    db.session.commit()
+    return jsonify(organ_exam_dict(e)), 201
+
+
+@app.route('/admin/organ-exams/<int:eid>', methods=['PATCH'])
+@admin_required
+def admin_update_organ_exam(eid):
+    e = OrganExam.query.get(eid)
+    if not e:
+        return jsonify({'error': 'Tidak ditemukan'}), 404
+    data = request.get_json() or {}
+    for field in ['nama_ujian', 'organ', 'penguji', 'hasil', 'nilai', 'catatan']:
+        if field in data:
+            setattr(e, field, data[field])
+    if 'tanggal' in data and data['tanggal']:
+        e.tanggal = datetime.datetime.fromisoformat(data['tanggal'])
+    db.session.commit()
+    return jsonify(organ_exam_dict(e))
+
+
+# ── Survey ────────────────────────────────────────────────────────────────────
+
+@app.route('/surveys/active', methods=['GET'])
+@auth_required
+def get_active_surveys():
+    sem = request.user.current_semester
+    surveys = Survey.query.filter(
+        Survey.is_active == True,
+        db.or_(Survey.semester_target == sem, Survey.semester_target == None)
+    ).all()
+    return jsonify([{
+        'id': s.id,
+        'judul': s.judul,
+        'link_survey': s.link_survey,
+        'semester_target': s.semester_target,
+    } for s in surveys])
+
+
+@app.route('/admin/surveys', methods=['POST'])
+@admin_required
+def admin_create_survey():
+    data = request.get_json() or {}
+    if not data.get('judul') or not data.get('link_survey'):
+        return jsonify({'error': 'judul dan link_survey wajib diisi'}), 400
+    s = Survey(
+        judul=data['judul'],
+        link_survey=data['link_survey'],
+        semester_target=data.get('semester_target'),
+        is_active=data.get('is_active', True),
+    )
+    db.session.add(s)
+    db.session.commit()
+    return jsonify({'id': s.id, 'judul': s.judul, 'link_survey': s.link_survey}), 201
+
+
+@app.route('/admin/surveys', methods=['GET'])
+@admin_required
+def admin_list_surveys():
+    surveys = Survey.query.order_by(Survey.created_at.desc()).all()
+    return jsonify([{'id': s.id, 'judul': s.judul, 'link_survey': s.link_survey,
+                     'semester_target': s.semester_target, 'is_active': s.is_active} for s in surveys])
+
+
+@app.route('/admin/surveys/<int:sid>', methods=['PATCH'])
+@admin_required
+def admin_update_survey(sid):
+    s = Survey.query.get(sid)
+    if not s:
+        return jsonify({'error': 'Tidak ditemukan'}), 404
+    data = request.get_json() or {}
+    for field in ['judul', 'link_survey', 'semester_target', 'is_active']:
+        if field in data:
+            setattr(s, field, data[field])
+    db.session.commit()
+    return jsonify({'id': s.id, 'judul': s.judul, 'is_active': s.is_active})
+
+
+# ── Admin Notifications ───────────────────────────────────────────────────────
+
+@app.route('/admin/notifications', methods=['GET'])
+@admin_required
+def get_admin_notifications():
+    unread_only = request.args.get('unread', 'false').lower() == 'true'
+    query = AdminNotification.query
+    if unread_only:
+        query = query.filter_by(is_read=False)
+    items = query.order_by(AdminNotification.created_at.desc()).limit(50).all()
+    return jsonify([{
+        'id': n.id,
+        'title': n.title,
+        'message': n.message,
+        'type': n.type,
+        'ref_id': n.ref_id,
+        'ref_type': n.ref_type,
+        'is_read': n.is_read,
+        'created_at': n.created_at.isoformat() if n.created_at else None,
+    } for n in items])
+
+
+@app.route('/admin/notifications/<int:nid>/read', methods=['PATCH'])
+@admin_required
+def mark_notification_read(nid):
+    n = AdminNotification.query.get(nid)
+    if not n:
+        return jsonify({'error': 'Tidak ditemukan'}), 404
+    n.is_read = True
+    db.session.commit()
+    return jsonify({'status': 'ok'})
+
+
+@app.route('/admin/notifications/read-all', methods=['PATCH'])
+@admin_required
+def mark_all_notifications_read():
+    AdminNotification.query.filter_by(is_read=False).update({'is_read': True})
+    db.session.commit()
+    return jsonify({'status': 'ok'})
+
+
+# ── Profile Update (PPDS Lengkap) ─────────────────────────────────────────────
+
+@app.route('/profile/update', methods=['PATCH'])
+@auth_required
+def update_profile():
+    data = request.get_json() or {}
+    user = request.user
+    for field in ['full_name', 'nim', 'angkatan', 'dosen_wali',
+                  'pembimbing_1', 'pembimbing_2', 'pembimbing_retrospektif']:
+        if field in data:
+            setattr(user, field, data[field])
+    db.session.commit()
+    return jsonify(user_dict(user))
+
+
+@app.route('/admin/users/<int:uid>/warning', methods=['PATCH'])
+@admin_required
+def admin_set_warning(uid):
+    user = User.query.get(uid)
+    if not user:
+        return jsonify({'error': 'User tidak ditemukan'}), 404
+    data = request.get_json() or {}
+    user.warning_active = data.get('warning_active', user.warning_active)
+    user.warning_message = data.get('warning_message', user.warning_message)
+    db.session.commit()
+    return jsonify(user_dict(user))
+
+
+@app.route('/admin/users/<int:uid>/profile', methods=['PATCH'])
+@admin_required
+def admin_update_user_profile(uid):
+    user = User.query.get(uid)
+    if not user:
+        return jsonify({'error': 'User tidak ditemukan'}), 404
+    data = request.get_json() or {}
+    for field in ['full_name', 'nim', 'angkatan', 'dosen_wali', 'phase',
+                  'current_semester', 'pembimbing_1', 'pembimbing_2',
+                  'pembimbing_retrospektif', 'warning_active', 'warning_message']:
+        if field in data:
+            setattr(user, field, data[field])
+    db.session.commit()
+    return jsonify(user_dict(user))
 
 
 if __name__ == '__main__':
