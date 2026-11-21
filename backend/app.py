@@ -35,8 +35,12 @@ load_dotenv()
 log = logging.getLogger('pathoengage')
 
 DATABASE_URL = os.getenv('DATABASE_URL', 'sqlite:///./backend_data.db')
-if DATABASE_URL.startswith('postgres://'):
-    DATABASE_URL = 'postgresql://' + DATABASE_URL[len('postgres://'):]
+# Pakai driver psycopg2 secara eksplisit: SQLAlchemy 2.1 mengganti driver default
+# `postgresql://` ke psycopg (v3) yang tidak terpasang.
+for _prefix in ('postgres://', 'postgresql://'):
+    if DATABASE_URL.startswith(_prefix):
+        DATABASE_URL = 'postgresql+psycopg2://' + DATABASE_URL[len(_prefix):]
+        break
 
 # JWT secret: pakai env SECRET_KEY bila diset dengan nilai kuat (>= 32 karakter).
 # Bila tidak, secret acak dibuat sekali lalu disimpan di tabel app_config sehingga
