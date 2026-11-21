@@ -26,7 +26,7 @@ android {
     defaultConfig {
         applicationId = "com.example.fp_pemrograman"
         // PERBAIKAN 3: Naikkan minSdk ke 23
-        minSdk = 23
+        minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode ?: 1
         versionName = flutter.versionName ?: "1.0"
