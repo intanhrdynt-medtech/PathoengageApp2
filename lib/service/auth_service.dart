@@ -5,7 +5,12 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 class AuthService {
   // Use Vercel Backend
-  final String baseUrl = 'https://backend-intan12.vercel.app';
+  // Default: backend production. Untuk uji lokal:
+  // flutter build web --dart-define=API_BASE_URL=http://127.0.0.1:5000
+  final String baseUrl = const String.fromEnvironment(
+    'API_BASE_URL',
+    defaultValue: 'https://backend-intan12.vercel.app',
+  );
   
   Future<String?> getToken() async {
     final prefs = await SharedPreferences.getInstance();

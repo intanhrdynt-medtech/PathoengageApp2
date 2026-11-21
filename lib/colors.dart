@@ -29,7 +29,15 @@ class AppColors {
   // Status Colors
   static const Color successGreen = Color(0xFF27AE60); // For success states
   static const Color warningOrange = Color(0xFFE67E22); // For warnings
-  
-  static Color? inputFill;
-  static Color? primary;
+  static const Color errorRed = Color(0xFFC62828); // Ditolak / gagal
+  static const Color infoBlue = Color(0xFF1E6FB8); // Menunggu / info
+  static const Color neutralGrey = Color(0xFF78708A); // Belum dimulai
+
+  // Kalung (phase) — satu set warna untuk semua layar
+  static const Color phaseMkdu = Color(0xFF6B5B7F);
+  static const Color phaseRed = Color(0xFFC62828);
+  static const Color phaseYellow = Color(0xFFB7791F); // kuning gelap agar teks putih tetap terbaca
+  static const Color phaseGreen = Color(0xFF2E7D32);
+
+  static const Color cardBorder = Color(0xFFE6DDEE);
 }

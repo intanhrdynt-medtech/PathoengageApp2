@@ -1,508 +1,246 @@
 import 'package:flutter/material.dart';
 import 'package:fp_pemrograman/colors.dart';
+import 'package:fp_pemrograman/screens/penilai/bimbingan_tab.dart';
+import 'package:fp_pemrograman/screens/penilai/penilai_common.dart';
+import 'package:fp_pemrograman/screens/penilai/review_tab.dart';
+import 'package:fp_pemrograman/screens/penilai/ujian_organ_tab.dart';
 import 'package:fp_pemrograman/service/api_service.dart';
-import 'package:url_launcher/url_launcher.dart';
+import 'package:fp_pemrograman/utils/labels.dart';
+import 'package:fp_pemrograman/widgets/ui.dart';
 
+/// Layar utama untuk role penilai (dosen wali / pembimbing / penguji).
 class EvaluatorScreen extends StatefulWidget {
+  // ignore: use_super_parameters
   const EvaluatorScreen({Key? key}) : super(key: key);
 
   @override
   State<EvaluatorScreen> createState() => _EvaluatorScreenState();
 }
 
-class _EvaluatorScreenState extends State<EvaluatorScreen>
-    with SingleTickerProviderStateMixin {
-  final ApiService _api = ApiService();
-  late TabController _tabController;
-  bool _isLoading = true;
+class _Dest {
+  final String label;
+  final IconData icon;
+  final IconData selectedIcon;
+  const _Dest(this.label, this.icon, this.selectedIcon);
+}
 
-  List<dynamic> _pendingJournals = [];
-  List<dynamic> _pendingPenelitian = [];
+const _destinations = [
+  _Dest('Review', Icons.rate_review_outlined, Icons.rate_review),
+  _Dest('Bimbingan', Icons.groups_outlined, Icons.groups),
+  _Dest('Ujian Organ', Icons.assignment_outlined, Icons.assignment),
+  _Dest('Profil', Icons.person_outline, Icons.person),
+];
+
+class _EvaluatorScreenState extends State<EvaluatorScreen> {
+  final ApiService _api = ApiService();
+  final ValueNotifier<int> _refreshSignal = ValueNotifier(0);
+
+  int _index = 0;
+  int? _reviewCount;
+  Map<String, dynamic>? _me;
+  bool _meLoading = true;
+  String? _meError;
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
-    _loadData();
+    _loadMe();
   }
 
   @override
   void dispose() {
-    _tabController.dispose();
+    _refreshSignal.dispose();
     super.dispose();
   }
 
-  Future<void> _loadData() async {
-    setState(() => _isLoading = true);
-    try {
-      final journals = await _api.getAdminJournalReadings('pending');
-      final penelitian = await _api.getAllPenelitian('');
-      setState(() {
-        _pendingJournals = journals;
-        // Antrean review: baru diajukan, atau dokumen revisi sudah diunggah PPDS.
-        _pendingPenelitian = penelitian
-            .where((p) => p['perlu_review'] == true || p['status'] == 'submitted')
-            .toList();
-      });
-    } catch (e) {
-      debugPrint('Error loading evaluator data: $e');
-    } finally {
-      setState(() => _isLoading = false);
+  Future<void> _loadMe() async {
+    setState(() => _meLoading = true);
+    final me = await _api.getMe();
+    if (!mounted) return;
+    setState(() {
+      _meLoading = false;
+      _me = me ?? _me;
+      _meError = me == null ? (_api.lastError ?? 'Gagal memuat profil.') : null;
+    });
+  }
+
+  void _refreshAll() {
+    _refreshSignal.value++;
+    _loadMe();
+  }
+
+  Widget _icon(int i, {required bool selected}) {
+    final d = _destinations[i];
+    final icon = Icon(selected ? d.selectedIcon : d.icon);
+    final count = _reviewCount ?? 0;
+    if (i == 0 && count > 0) {
+      return Badge(label: Text(count > 99 ? '99+' : '$count'), child: icon);
     }
-  }
-
-  Color _statusColor(String? s) {
-    switch (s) {
-      case 'approved': return Colors.green;
-      case 'pending': return Colors.orange;
-      case 'rejected': return Colors.red;
-      case 'submitted': return Colors.blue;
-      case 'revisi_1': return Colors.orange;
-      case 'revisi_2': return Colors.deepOrange;
-      default: return Colors.grey;
-    }
-  }
-
-  String _statusLabel(String? s) {
-    switch (s) {
-      case 'approved': return 'Disetujui';
-      case 'pending': return 'Menunggu';
-      case 'rejected': return 'Ditolak';
-      case 'submitted': return 'Diajukan';
-      case 'revisi_1': return 'Revisi 1 diunggah';
-      case 'revisi_2': return 'Revisi 2 diunggah';
-      default: return s ?? '-';
-    }
-  }
-
-  void _showJournalReviewDialog(Map<String, dynamic> journal) {
-    final catatanCtrl = TextEditingController(text: journal['catatan_admin'] ?? '');
-    String selectedStatus = 'approve'; // default ke approve
-    bool isLoading = false;
-
-    showDialog(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDlg) => AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-          title: const Text('Review Journal Reading',
-              style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold, fontSize: 16)),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _infoRow('Judul', journal['judul'] ?? '-'),
-                _infoRow('Pengaju', journal['user_name'] ?? '-'),
-                _infoRow('Pembimbing', journal['pembimbing'] ?? '-'),
-                const SizedBox(height: 14),
-                const Text('Status', style: TextStyle(fontWeight: FontWeight.w600, fontFamily: 'Poppins')),
-                const SizedBox(height: 6),
-                Row(
-                  children: [
-                    _statusChip('approve', 'Setujui', Colors.green, selectedStatus, (v) => setDlg(() => selectedStatus = v)),
-                    const SizedBox(width: 8),
-                    _statusChip('reject', 'Tolak', Colors.red, selectedStatus, (v) => setDlg(() => selectedStatus = v)),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: catatanCtrl,
-                  maxLines: 3,
-                  decoration: InputDecoration(
-                    labelText: 'Catatan (opsional)',
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Batal')),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                  backgroundColor: selectedStatus == 'approve' ? Colors.green : Colors.red,
-                  foregroundColor: Colors.white),
-              onPressed: isLoading
-                  ? null
-                  : () async {
-                      setDlg(() => isLoading = true);
-                      final ok = await _api.adminReviewJournal(
-                          journal['id'], selectedStatus, catatanCtrl.text.trim());
-                      if (ok && mounted) {
-                        Navigator.pop(ctx);
-                        _loadData();
-                        ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text('Journal berhasil di-${selectedStatus == 'approve' ? 'setujui' : 'tolak'}!')));
-                      } else {
-                        setDlg(() => isLoading = false);
-                        ScaffoldMessenger.of(ctx)
-                            .showSnackBar(const SnackBar(content: Text('Gagal update status')));
-                      }
-                    },
-              child: isLoading
-                  ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                  : const Text('Simpan'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  void _showPenelitianReviewDialog(Map<String, dynamic> pen) {
-    final catatanCtrl = TextEditingController();
-    String selectedStatus = 'approved';
-    bool isLoading = false;
-
-    showDialog(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDlg) => AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-          title: const Text('Review Penelitian',
-              style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold, fontSize: 16)),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _infoRow('Judul', pen['judul'] ?? '-'),
-                _infoRow('Pengaju', pen['user_name'] ?? '-'),
-                _infoRow('Jenis', pen['jenis'] ?? '-'),
-                _infoRow('Pembimbing', pen['pembimbing_1'] ?? '-'),
-                _docLink('Dokumen Proposal', pen['dokumen_proposal_url']),
-                _docLink('Dokumen Revisi 1', pen['dokumen_revisi1_url']),
-                _docLink('Dokumen Revisi 2', pen['dokumen_revisi2_url']),
-                if ((pen['catatan_revisi1'] ?? '').toString().isNotEmpty)
-                  _infoRow('Catatan R1', pen['catatan_revisi1']),
-                if ((pen['catatan_revisi2'] ?? '').toString().isNotEmpty)
-                  _infoRow('Catatan R2', pen['catatan_revisi2']),
-                const SizedBox(height: 14),
-                const Text('Keputusan', style: TextStyle(fontWeight: FontWeight.w600, fontFamily: 'Poppins')),
-                const SizedBox(height: 6),
-                Wrap(
-                  spacing: 8,
-                  children: [
-                    _statusChip('approved', 'Setujui', Colors.green, selectedStatus, (v) => setDlg(() => selectedStatus = v)),
-                    _statusChip('revisi_1', 'Revisi 1', Colors.orange, selectedStatus, (v) => setDlg(() => selectedStatus = v)),
-                    _statusChip('revisi_2', 'Revisi 2', Colors.deepOrange, selectedStatus, (v) => setDlg(() => selectedStatus = v)),
-                    _statusChip('rejected', 'Tolak', Colors.red, selectedStatus, (v) => setDlg(() => selectedStatus = v)),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: catatanCtrl,
-                  maxLines: 3,
-                  decoration: InputDecoration(
-                    labelText: 'Catatan revisi / komentar',
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Batal')),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                  backgroundColor: selectedStatus == 'approved' ? Colors.green : Colors.orange,
-                  foregroundColor: Colors.white),
-              onPressed: isLoading
-                  ? null
-                  : () async {
-                      setDlg(() => isLoading = true);
-                      final ok = await _api.adminUpdatePenelitianStatus(
-                          pen['id'], selectedStatus, catatanCtrl.text.trim());
-                      if (ok && mounted) {
-                        Navigator.pop(ctx);
-                        _loadData();
-                        ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Status penelitian berhasil diupdate!')));
-                      } else {
-                        setDlg(() => isLoading = false);
-                        ScaffoldMessenger.of(ctx)
-                            .showSnackBar(const SnackBar(content: Text('Gagal update status penelitian')));
-                      }
-                    },
-              child: isLoading
-                  ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                  : const Text('Simpan'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _docLink(String label, dynamic url) {
-    final link = (url ?? '').toString();
-    if (link.isEmpty) return const SizedBox.shrink();
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 4),
-      child: InkWell(
-        onTap: () async {
-          try {
-            await launchUrl(Uri.parse(link), mode: LaunchMode.externalApplication);
-          } catch (_) {
-            if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Link dokumen tidak bisa dibuka')));
-            }
-          }
-        },
-        child: Row(children: [
-          const Icon(Icons.open_in_new, size: 14, color: Colors.blue),
-          const SizedBox(width: 6),
-          Text(label, style: const TextStyle(fontSize: 12, color: Colors.blue, decoration: TextDecoration.underline)),
-        ]),
-      ),
-    );
-  }
-
-  Widget _infoRow(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 6),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-              width: 90,
-              child: Text('$label:', style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12, color: Colors.grey))),
-          Expanded(child: Text(value, style: const TextStyle(fontSize: 12))),
-        ],
-      ),
-    );
-  }
-
-  Widget _statusChip(String value, String label, Color color, String current, void Function(String) onSelect) {
-    final selected = current == value;
-    return GestureDetector(
-      onTap: () => onSelect(value),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-        decoration: BoxDecoration(
-          color: selected ? color : color.withOpacity(0.1),
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: color),
-        ),
-        child: Text(label,
-            style: TextStyle(
-                color: selected ? Colors.white : color,
-                fontWeight: FontWeight.bold,
-                fontSize: 12)),
-      ),
-    );
-  }
-
-  Widget _buildJournalTab() {
-    if (_isLoading) return const Center(child: CircularProgressIndicator());
-    if (_pendingJournals.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.article_outlined, size: 64, color: Colors.grey.withOpacity(0.5)),
-            const SizedBox(height: 12),
-            const Text('Tidak ada Journal Reading yang perlu direview',
-                textAlign: TextAlign.center,
-                style: TextStyle(fontFamily: 'Poppins', color: Colors.grey)),
-          ],
-        ),
-      );
-    }
-    return ListView.builder(
-      padding: const EdgeInsets.all(16),
-      itemCount: _pendingJournals.length,
-      itemBuilder: (ctx, i) {
-        final j = _pendingJournals[i];
-        return Card(
-          margin: const EdgeInsets.only(bottom: 12),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-          elevation: 2,
-          child: ListTile(
-            contentPadding: const EdgeInsets.all(14),
-            leading: Container(
-              width: 46,
-              height: 46,
-              decoration: BoxDecoration(
-                color: Colors.orange.withOpacity(0.15),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: const Icon(Icons.article, color: Colors.orange, size: 24),
-            ),
-            title: Text(j['judul'] ?? '-',
-                style: const TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold, fontSize: 13)),
-            subtitle: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const SizedBox(height: 4),
-                Text('Pengaju: ${j['user_name'] ?? '-'}',
-                    style: const TextStyle(fontSize: 12, color: Colors.grey)),
-                Text('Pembimbing: ${j['pembimbing'] ?? '-'}',
-                    style: const TextStyle(fontSize: 12, color: Colors.grey)),
-                const SizedBox(height: 6),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                  decoration: BoxDecoration(
-                      color: _statusColor(j['status']).withOpacity(0.15),
-                      borderRadius: BorderRadius.circular(8)),
-                  child: Text(_statusLabel(j['status']),
-                      style: TextStyle(color: _statusColor(j['status']), fontSize: 11, fontWeight: FontWeight.bold)),
-                ),
-              ],
-            ),
-            trailing: ElevatedButton(
-              onPressed: () => _showJournalReviewDialog(j),
-              style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.primaryPurple,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8)),
-              child: const Text('Review', style: TextStyle(fontSize: 12)),
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _buildPenelitianTab() {
-    if (_isLoading) return const Center(child: CircularProgressIndicator());
-    if (_pendingPenelitian.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.science_outlined, size: 64, color: Colors.grey.withOpacity(0.5)),
-            const SizedBox(height: 12),
-            const Text('Tidak ada Penelitian yang perlu direview',
-                textAlign: TextAlign.center,
-                style: TextStyle(fontFamily: 'Poppins', color: Colors.grey)),
-          ],
-        ),
-      );
-    }
-    return ListView.builder(
-      padding: const EdgeInsets.all(16),
-      itemCount: _pendingPenelitian.length,
-      itemBuilder: (ctx, i) {
-        final p = _pendingPenelitian[i];
-        return Card(
-          margin: const EdgeInsets.only(bottom: 12),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-          elevation: 2,
-          child: Padding(
-            padding: const EdgeInsets.all(14),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(
-                          color: Colors.blue.withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(10)),
-                      child: const Icon(Icons.science, color: Colors.blue, size: 20),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(p['judul'] ?? '-',
-                              style: const TextStyle(
-                                  fontFamily: 'Poppins',
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 13)),
-                          Text('${p['jenis'] ?? '-'} • ${p['user_name'] ?? '-'}',
-                              style: const TextStyle(fontSize: 11, color: Colors.grey)),
-                        ],
-                      ),
-                    ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                      decoration: BoxDecoration(
-                          color: _statusColor(p['status']).withOpacity(0.15),
-                          borderRadius: BorderRadius.circular(8)),
-                      child: Text(_statusLabel(p['status']),
-                          style: TextStyle(
-                              color: _statusColor(p['status']),
-                              fontSize: 11,
-                              fontWeight: FontWeight.bold)),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                if (p['pembimbing_1'] != null)
-                  Text('Pembimbing: ${p['pembimbing_1']}',
-                      style: const TextStyle(fontSize: 12, color: Colors.grey)),
-                const SizedBox(height: 8),
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: ElevatedButton(
-                    onPressed: () => _showPenelitianReviewDialog(p),
-                    style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.blue,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8)),
-                    child: const Text('Review', style: TextStyle(fontSize: 12)),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
+    return icon;
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.backgroundLightest,
-      appBar: AppBar(
-        title: const Text('Panel Evaluator',
-            style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold, fontSize: 18)),
-        backgroundColor: AppColors.primaryPurple,
-        foregroundColor: Colors.white,
-        elevation: 0,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: _loadData,
-          ),
-        ],
-        bottom: TabBar(
-          controller: _tabController,
-          indicatorColor: Colors.white,
-          labelColor: Colors.white,
-          unselectedLabelColor: Colors.white70,
-          labelStyle: const TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold),
-          tabs: [
-            Tab(
-              child: Row(mainAxisSize: MainAxisSize.min, children: [
-                const Icon(Icons.article, size: 16),
-                const SizedBox(width: 6),
-                Text('Journal (${_pendingJournals.length})'),
-              ]),
+    final name = textOrNull(_me?['full_name']);
+    final pages = [
+      ReviewTab(
+        refreshSignal: _refreshSignal,
+        onCountChanged: (n) {
+          if (mounted && n != _reviewCount) setState(() => _reviewCount = n);
+        },
+      ),
+      BimbinganTab(refreshSignal: _refreshSignal),
+      UjianOrganTab(refreshSignal: _refreshSignal),
+      _ProfilTab(me: _me, loading: _meLoading, error: _meError, onRetry: _loadMe),
+    ];
+
+    return LayoutBuilder(builder: (context, constraints) {
+      final wide = constraints.maxWidth >= 840;
+      final body = IndexedStack(index: _index, children: pages);
+      return Scaffold(
+        appBar: AppBar(
+          titleSpacing: wide ? 24 : null,
+          title: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            const Text('PathoEngage — Penilai', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
+            if (name != null)
+              Text(name,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w400, color: Colors.white70)),
+          ]),
+          actions: [
+            NotificationBell(onChanged: _refreshAll),
+            IconButton(
+              tooltip: 'Keluar',
+              icon: const Icon(Icons.logout),
+              onPressed: () => logoutWithConfirm(context),
             ),
-            Tab(
-              child: Row(mainAxisSize: MainAxisSize.min, children: [
-                const Icon(Icons.science, size: 16),
-                const SizedBox(width: 6),
-                Text('Penelitian (${_pendingPenelitian.length})'),
-              ]),
-            ),
+            const SizedBox(width: 4),
           ],
         ),
-      ),
-      body: TabBarView(
-        controller: _tabController,
+        body: wide
+            ? Row(children: [
+                NavigationRail(
+                  selectedIndex: _index,
+                  onDestinationSelected: (i) => setState(() => _index = i),
+                  labelType: NavigationRailLabelType.all,
+                  backgroundColor: Colors.white,
+                  indicatorColor: AppColors.primaryPurple.withValues(alpha: 0.15),
+                  selectedIconTheme: const IconThemeData(color: AppColors.primaryPurple),
+                  selectedLabelTextStyle: const TextStyle(
+                      fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.primaryPurple),
+                  unselectedLabelTextStyle: const TextStyle(fontSize: 12, color: AppColors.textGrey),
+                  destinations: [
+                    for (var i = 0; i < _destinations.length; i++)
+                      NavigationRailDestination(
+                        icon: _icon(i, selected: false),
+                        selectedIcon: _icon(i, selected: true),
+                        label: Text(_destinations[i].label),
+                      ),
+                  ],
+                ),
+                const VerticalDivider(width: 1, color: AppColors.cardBorder),
+                Expanded(child: body),
+              ])
+            : body,
+        bottomNavigationBar: wide
+            ? null
+            : NavigationBar(
+                selectedIndex: _index,
+                onDestinationSelected: (i) => setState(() => _index = i),
+                destinations: [
+                  for (var i = 0; i < _destinations.length; i++)
+                    NavigationDestination(
+                      icon: _icon(i, selected: false),
+                      selectedIcon: _icon(i, selected: true),
+                      label: _destinations[i].label,
+                    ),
+                ],
+              ),
+      );
+    });
+  }
+}
+
+// ── Profil ────────────────────────────────────────────────────────────────────
+
+class _ProfilTab extends StatelessWidget {
+  final Map<String, dynamic>? me;
+  final bool loading;
+  final String? error;
+  final Future<void> Function() onRetry;
+  const _ProfilTab({required this.me, required this.loading, required this.error, required this.onRetry});
+
+  @override
+  Widget build(BuildContext context) {
+    if (me == null) {
+      if (loading) return const LoadingView();
+      return RefreshableState(
+        onRefresh: onRetry,
+        child: ErrorState(message: error ?? 'Gagal memuat profil.', onRetry: onRetry),
+      );
+    }
+    final m = me!;
+    final name = textOrNull(m['full_name']) ?? '-';
+    return RefreshIndicator(
+      onRefresh: onRetry,
+      child: ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.all(16),
         children: [
-          _buildJournalTab(),
-          _buildPenelitianTab(),
+          MaxWidth(
+            maxWidth: 600,
+            child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              AppCard(
+                padding: const EdgeInsets.all(20),
+                child: Column(children: [
+                  CircleAvatar(
+                    radius: 36,
+                    backgroundColor: AppColors.lightPurpleAccent,
+                    child: Text(name.isEmpty || name == '-' ? '?' : name[0].toUpperCase(),
+                        style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w700, color: AppColors.primaryPurple)),
+                  ),
+                  const SizedBox(height: 12),
+                  Text(name,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.textDark)),
+                  const SizedBox(height: 6),
+                  SmallTag(roleLabel(m['role']?.toString()), icon: Icons.verified_user_outlined),
+                ]),
+              ),
+              AppCard(
+                padding: EdgeInsets.zero,
+                child: Column(children: [
+                  ListTile(
+                    leading: const Icon(Icons.email_outlined, color: AppColors.primaryPurple),
+                    title: const Text('Email', style: kCaption),
+                    subtitle: Text(textOrNull(m['email']) ?? '-', style: kBody),
+                  ),
+                  const Divider(height: 1),
+                  ListTile(
+                    leading: const Icon(Icons.badge_outlined, color: AppColors.primaryPurple),
+                    title: const Text('Peran', style: kCaption),
+                    subtitle: Text(roleLabel(m['role']?.toString()), style: kBody),
+                  ),
+                ]),
+              ),
+              const NoteBox(
+                title: 'Tentang penugasan',
+                text: 'PPDS bimbingan (Dosen Wali / Pembimbing) dan ujian organ yang Anda uji ditetapkan oleh admin. '
+                    'Hubungi admin bila ada penugasan yang belum sesuai.',
+              ),
+              const SizedBox(height: 20),
+              OutlinedButton.icon(
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: AppColors.errorRed,
+                  side: const BorderSide(color: AppColors.errorRed),
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                ),
+                onPressed: () => logoutWithConfirm(context),
+                icon: const Icon(Icons.logout),
+                label: const Text('Keluar dari akun', style: TextStyle(fontSize: 14)),
+              ),
+            ]),
+          ),
         ],
       ),
     );

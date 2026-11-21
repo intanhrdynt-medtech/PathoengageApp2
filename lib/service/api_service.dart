@@ -2,10 +2,16 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:fp_pemrograman/service/session.dart';
 
 class ApiService {
   // Use Vercel Backend
-  final String baseUrl = 'https://backend-intan12.vercel.app';
+  // Default: backend production. Untuk uji lokal:
+  // flutter build web --dart-define=API_BASE_URL=http://127.0.0.1:5000
+  final String baseUrl = const String.fromEnvironment(
+    'API_BASE_URL',
+    defaultValue: 'https://backend-intan12.vercel.app',
+  );
 
   Future<String?> _getToken() async {
     final prefs = await SharedPreferences.getInstance();
@@ -757,5 +763,145 @@ class ApiService {
     }
     return false;
   }
-}
 
+  // ════════════════════════════════════════════════════════════════════════
+  // Helper generik: setiap panggilan menyimpan pesan error terakhir di
+  // [lastError] supaya layar bisa menampilkan alasan kegagalan ke pengguna.
+  // ════════════════════════════════════════════════════════════════════════
+
+  String? lastError;
+
+  /// Kode status HTTP terakhir (null bila gagal terhubung).
+  int? lastStatus;
+
+  String _errorFrom(http.Response r) {
+    try {
+      final body = jsonDecode(r.body);
+      if (body is Map && body['error'] != null) return body['error'].toString();
+    } catch (_) {}
+    if (r.statusCode == 401) return 'Sesi login berakhir. Silakan login ulang.';
+    if (r.statusCode == 429) return 'Terlalu banyak percobaan. Coba lagi nanti.';
+    return 'Terjadi kesalahan (kode ${r.statusCode}).';
+  }
+
+  /// Mengembalikan body JSON (Map/List) bila sukses, atau null bila gagal.
+  Future<dynamic> _send(String method, String path, {Map<String, dynamic>? body}) async {
+    lastError = null;
+    lastStatus = null;
+    final token = await _getToken();
+    if (token == null) {
+      lastError = 'Sesi login berakhir. Silakan login ulang.';
+      lastStatus = 401;
+      return null;
+    }
+    try {
+      final uri = Uri.parse('$baseUrl$path');
+      final headers = _buildHeaders(token);
+      final encoded = body == null ? null : jsonEncode(body);
+      late http.Response r;
+      switch (method) {
+        case 'GET':
+          r = await http.get(uri, headers: headers);
+          break;
+        case 'POST':
+          r = await http.post(uri, headers: headers, body: encoded);
+          break;
+        case 'PUT':
+          r = await http.put(uri, headers: headers, body: encoded);
+          break;
+        case 'PATCH':
+          r = await http.patch(uri, headers: headers, body: encoded);
+          break;
+        case 'DELETE':
+          r = await http.delete(uri, headers: headers);
+          break;
+      }
+      lastStatus = r.statusCode;
+      if (r.statusCode >= 200 && r.statusCode < 300) {
+        return r.body.isEmpty ? <String, dynamic>{} : jsonDecode(r.body);
+      }
+      lastError = _errorFrom(r);
+      if (r.statusCode == 401) {
+        lastError = 'Sesi login berakhir. Silakan login ulang.';
+        handleUnauthorized();
+      }
+    } catch (e) {
+      debugPrint('API $method $path error: $e');
+      lastError = 'Tidak dapat terhubung ke server. Periksa koneksi internet.';
+    }
+    return null;
+  }
+
+  // --- PROFIL & KALUNG ---
+  /// /me: data user + progres kalung (`kalung`). null bila gagal.
+  Future<Map<String, dynamic>?> getMe() async => await _send('GET', '/me') as Map<String, dynamic>?;
+
+  // --- NOTIFIKASI (semua peran) ---
+  Future<Map<String, dynamic>?> getNotifications() async =>
+      await _send('GET', '/notifications') as Map<String, dynamic>?;
+  Future<bool> markNotificationRead(int id) async => await _send('PATCH', '/notifications/$id/read') != null;
+  Future<bool> markAllNotificationsRead() async => await _send('PATCH', '/notifications/read-all') != null;
+
+  // --- VERIFIKASI ADMIN (dengan alasan) ---
+  /// action: approve | reject | fail (fail khusus ujian = tidak lulus).
+  Future<bool> verifyItem(String typeCategory, int itemId, String action, {String? alasan, double? score}) async =>
+      await _send('PUT', '/admin/verify/$typeCategory/$itemId', body: {
+        'action': action,
+        if (alasan != null && alasan.isNotEmpty) 'alasan': alasan,
+        if (score != null) 'score': score,
+      }) !=
+      null;
+
+  // --- JOURNAL: perbaiki / ajukan ulang ---
+  Future<bool> editJournalReading(int id, Map<String, dynamic> data) async =>
+      await _send('PATCH', '/journal-readings/$id', body: data) != null;
+  Future<bool> uploadJournalBukti(int id, String buktiUrl) async =>
+      await _send('PATCH', '/journal-readings/$id/bukti', body: {'bukti_url': buktiUrl}) != null;
+
+  // --- PENGABDIAN & PRESTASI: ubah / hapus ---
+  Future<bool> updatePengabdian(int id, Map<String, dynamic> data) async =>
+      await _send('PATCH', '/pengabdian/$id', body: data) != null;
+  Future<bool> deletePengabdian(int id) async => await _send('DELETE', '/pengabdian/$id') != null;
+  Future<bool> updatePrestasi(int id, Map<String, dynamic> data) async =>
+      await _send('PATCH', '/prestasi/$id', body: data) != null;
+  Future<bool> deletePrestasi(int id) async => await _send('DELETE', '/prestasi/$id') != null;
+
+  // --- PENILAIAN (PPDS melihat nilainya) ---
+  Future<List<dynamic>?> getMyPenilaian() async => await _send('GET', '/me/penilaian') as List<dynamic>?;
+
+  // --- PENILAI / DOSEN ---
+  Future<List<dynamic>?> getBimbingan() async => await _send('GET', '/penilai/bimbingan') as List<dynamic>?;
+  Future<Map<String, dynamic>?> getBimbinganProgress(int ppdsId) async =>
+      await _send('GET', '/penilai/bimbingan/$ppdsId/progress') as Map<String, dynamic>?;
+  Future<bool> beriPenilaian(int ppdsId, String peran, double nilai, String catatan, {int? semester}) async =>
+      await _send('POST', '/penilaian', body: {
+        'ppds_id': ppdsId,
+        'peran': peran,
+        'nilai': nilai,
+        'catatan': catatan,
+        if (semester != null) 'semester': semester,
+      }) !=
+      null;
+  Future<List<dynamic>?> getUjianYangSayaUji() async => await _send('GET', '/penilai/ujian-organ') as List<dynamic>?;
+  Future<bool> isiHasilUjianOrgan(int examId, Map<String, dynamic> data) async =>
+      await _send('PATCH', '/penilai/ujian-organ/$examId', body: data) != null;
+  Future<List<dynamic>?> getPendingJournals() async =>
+      await _send('GET', '/admin/journal-readings?status=pending') as List<dynamic>?;
+  Future<List<dynamic>?> getAllPenelitianOrNull() async => await _send('GET', '/penelitian/all') as List<dynamic>?;
+
+  // --- ADMIN: penugasan, penilaian, stase ---
+  Future<List<dynamic>?> getPenilaiList() async => await _send('GET', '/admin/penilai') as List<dynamic>?;
+  Future<List<dynamic>?> adminGetPenilaian(int ppdsId) async =>
+      await _send('GET', '/admin/penilaian?ppds_id=$ppdsId') as List<dynamic>?;
+  Future<Map<String, dynamic>?> adminGetProgress(int uid) async =>
+      await _send('GET', '/admin/progress/$uid') as Map<String, dynamic>?;
+  Future<List<dynamic>?> adminGetUsers() async => await _send('GET', '/admin/users') as List<dynamic>?;
+  Future<bool> adminSaveProfile(int uid, Map<String, dynamic> data) async =>
+      await _send('PATCH', '/admin/users/$uid/profile', body: data) != null;
+  Future<bool> adminCreateRotation(Map<String, dynamic> data) async =>
+      await _send('POST', '/admin/rotations', body: data) != null;
+  Future<bool> adminSaveRotation(int id, Map<String, dynamic> data) async =>
+      await _send('PUT', '/admin/rotations/$id', body: data) != null;
+  Future<List<dynamic>?> getPendingVerificationsOrNull() async =>
+      await _send('GET', '/admin/pending_verifications') as List<dynamic>?;
+}

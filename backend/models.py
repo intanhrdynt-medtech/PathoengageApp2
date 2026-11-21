@@ -28,6 +28,13 @@ class User(db.Model):
     pembimbing_retrospektif = db.Column(db.String(200), nullable=True)
     warning_active = db.Column(db.Boolean, default=False)
     warning_message = db.Column(db.Text, nullable=True)
+    # Penugasan akun penilai (id user ber-role penilai). Kolom teks di atas tetap
+    # menyimpan namanya untuk tampilan & data lama.
+    dosen_wali_id = db.Column(db.Integer, nullable=True)
+    pembimbing_1_id = db.Column(db.Integer, nullable=True)
+    pembimbing_2_id = db.Column(db.Integer, nullable=True)
+    pembimbing_retrospektif_id = db.Column(db.Integer, nullable=True)
+    phase_updated_at = db.Column(db.DateTime, nullable=True)
 
     reminders = db.relationship('Reminder', backref='user', **_OWNED)
     competency_logs = db.relationship('CompetencyLog', backref='user', **_OWNED)
@@ -39,6 +46,7 @@ class User(db.Model):
     pengabdians = db.relationship('PengabdianMasyarakat', backref='user', **_OWNED)
     prestasis = db.relationship('Prestasi', backref='user', **_OWNED)
     organ_exams = db.relationship('OrganExam', backref='user', **_OWNED)
+    penilaian_diterima = db.relationship('Penilaian', backref='ppds', foreign_keys='Penilaian.ppds_id', **_OWNED)
 
 
 class CompetencyLog(db.Model):
@@ -52,6 +60,7 @@ class CompetencyLog(db.Model):
     evidence_url = db.Column(db.String(500), nullable=True)
     completed_at = db.Column(db.DateTime, nullable=True)
     notes = db.Column(db.Text, nullable=True)
+    alasan_tolak = db.Column(db.Text, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
 
@@ -67,6 +76,7 @@ class Exam(db.Model):
     evidence_url = db.Column(db.String(500), nullable=True)
     score = db.Column(db.Float, nullable=True)
     notes = db.Column(db.Text, nullable=True)
+    alasan_tolak = db.Column(db.Text, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
 
@@ -84,6 +94,7 @@ class AcademicTask(db.Model):
     document_proof_url = db.Column(db.String(500), nullable=True)
     link_url = db.Column(db.String(500), nullable=True)
     notes = db.Column(db.Text, nullable=True)
+    alasan_tolak = db.Column(db.Text, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
@@ -207,6 +218,8 @@ class AdminNotification(db.Model):
     ref_type = db.Column(db.String(50), nullable=True)
     is_read = db.Column(db.Boolean, default=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    # None = notifikasi untuk admin; selain itu untuk user tertentu (PPDS / penilai).
+    target_user_id = db.Column(db.Integer, nullable=True)
 
 
 # ── NEW: Survey ──────────────────────────────────────────────────────────────
@@ -234,7 +247,27 @@ class OrganExam(db.Model):
     hasil = db.Column(db.String(32), default='terjadwal')  # terjadwal, lulus, tidak_lulus
     nilai = db.Column(db.Float, nullable=True)
     catatan = db.Column(db.Text, nullable=True)
+    penguji_id = db.Column(db.Integer, nullable=True)  # akun penilai yang menguji
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+
+# ── Penilaian oleh dosen wali / pembimbing ───────────────────────────────────
+
+class Penilaian(db.Model):
+    __tablename__ = 'penilaian'
+    id = db.Column(db.Integer, primary_key=True)
+    ppds_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    penilai_id = db.Column(db.Integer, nullable=True)
+    penilai_nama = db.Column(db.String(120), nullable=True)
+    peran = db.Column(db.String(32), nullable=False)  # dosen_wali, pembimbing_1, pembimbing_2, pembimbing_retrospektif
+    semester = db.Column(db.Integer, nullable=False)
+    nilai = db.Column(db.Float, nullable=False)  # 0 - 100
+    catatan = db.Column(db.Text, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Satu nilai per penilai, per peran, per semester (mencegah dobel karena klik ganda).
+    __table_args__ = (db.UniqueConstraint('ppds_id', 'penilai_id', 'peran', 'semester', name='uq_penilaian_unik'),)
 
 
 # ── Internal: konfigurasi rahasia & pembatas percobaan login ─────────────────

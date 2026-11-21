@@ -1,348 +1,304 @@
 import 'package:flutter/material.dart';
 import 'package:fp_pemrograman/colors.dart';
-import 'package:fp_pemrograman/service/academic_task_url.dart';
+import 'package:fp_pemrograman/screens/admin/admin_common.dart';
+import 'package:fp_pemrograman/screens/admin/verification_sheet.dart';
 import 'package:fp_pemrograman/service/api_service.dart';
-import 'package:url_launcher/url_launcher.dart';
+import 'package:fp_pemrograman/widgets/ui.dart';
 
+/// Admin: daftar pengajuan yang menunggu verifikasi (kompetensi, ujian, tugas
+/// akademik, journal reading), dengan ringkasan di bagian atas.
 class AdminVerificationScreen extends StatefulWidget {
-  const AdminVerificationScreen({Key? key}) : super(key: key);
+  /// Dipanggil setiap jumlah pengajuan yang menunggu berubah (untuk badge menu).
+  final ValueChanged<int>? onCountChanged;
+  const AdminVerificationScreen({super.key, this.onCountChanged});
 
   @override
-  _AdminVerificationScreenState createState() => _AdminVerificationScreenState();
+  State<AdminVerificationScreen> createState() => AdminVerificationScreenState();
 }
 
-class _AdminVerificationScreenState extends State<AdminVerificationScreen> {
-  final ApiService _api = ApiService();
-  bool _isLoading = true;
-  List<dynamic> _pendingItems = [];
+class AdminVerificationScreenState extends State<AdminVerificationScreen> {
+  bool _loading = true;
+  String? _error;
+  List<VerifItem> _items = [];
+  int? _penelitianMenunggu;
+  String _filter = 'all';
+  bool _summaryOpen = true;
 
   @override
   void initState() {
     super.initState();
-    _loadData();
+    reload();
   }
 
-  Future<void> _loadData() async {
-    setState(() => _isLoading = true);
-    final items = await _api.getPendingVerifications();
-    
-    // Fetch pending journals and map them to the same format
-    final pendingJournalsRaw = await _api.getAdminJournalReadings('pending');
-    final pendingJournals = pendingJournalsRaw.map((j) => {
-      'id': j['id'],
-      'type_category': 'journal',
-      'user_name': j['penulis'] ?? 'Unknown',
-      'title': j['judul'] ?? '-',
-      'notes': 'Jurnal: ${j['nama_jurnal'] ?? '-'} | Pembimbing: ${j['pembimbing'] ?? '-'}',
-      'evidence_url': j['bukti_url'],
-    }).toList();
-
+  /// Muat ulang data (juga dipanggil dari dashboard setelah notifikasi dibuka).
+  Future<void> reload() async {
     setState(() {
-      _pendingItems = [...items, ...pendingJournals];
-      _isLoading = false;
+      _loading = _items.isEmpty;
+      _error = null;
     });
+    // Instance terpisah supaya pesan error tiap panggilan tidak saling menimpa.
+    final verifApi = ApiService();
+    final journalApi = ApiService();
+    final penelitianApi = ApiService();
+    final results = await Future.wait<List<dynamic>?>([
+      verifApi.getPendingVerificationsOrNull(),
+      journalApi.getPendingJournals(),
+      penelitianApi.getAllPenelitianOrNull(),
+    ]);
+    if (!mounted) return;
+    final pending = results[0];
+    final journals = results[1];
+    final penelitian = results[2];
+    if (pending == null && journals == null) {
+      setState(() {
+        _loading = false;
+        _error = verifApi.lastError ?? journalApi.lastError ?? 'Gagal memuat data. Periksa koneksi internet.';
+      });
+      return;
+    }
+    final items = <VerifItem>[
+      for (final m in pending ?? const []) VerifItem.fromPending(Map<String, dynamic>.from(m as Map)),
+      for (final j in journals ?? const []) VerifItem.fromJournal(Map<String, dynamic>.from(j as Map)),
+    ];
+    setState(() {
+      _items = items;
+      _penelitianMenunggu = penelitian?.where((p) => p is Map && p['perlu_review'] == true).length;
+      _loading = false;
+      _error = (pending == null || journals == null)
+          ? 'Sebagian data gagal dimuat: ${verifApi.lastError ?? journalApi.lastError ?? 'periksa koneksi'}'
+          : null;
+    });
+    widget.onCountChanged?.call(items.length);
   }
 
-  Future<void> _verifyItem(String typeCategory, int id, String action) async {
-    bool success = false;
-    if (typeCategory == 'journal') {
-      // Backend expects 'approve' or 'reject' as action
-      success = await _api.adminReviewJournal(id, action, '');
-    } else {
-      success = await _api.verifyTask(typeCategory, id, action);
-    }
+  int _count(String cat) => _items.where((i) => i.category.key == cat).length;
 
-    if (success) {
-      if (mounted) {
-        final msg = action == 'approve' ? 'Berhasil diverifikasi! ✅' : 'Pengajuan ditolak ❌';
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
-        _loadData();
-      }
-    } else {
-      if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('Gagal memproses permintaan')));
-      }
-    }
+  List<VerifItem> get _visible => _filter == 'all' ? _items : _items.where((i) => i.category.key == _filter).toList();
+
+  Future<void> _open(VerifItem item) async {
+    final msg = await showVerificationSheet(context, item);
+    if (!mounted || msg == null) return;
+    setState(() => _items.removeWhere((i) => i.key == item.key));
+    widget.onCountChanged?.call(_items.length);
+    showSnack(context, msg);
   }
 
-  IconData _getCategoryIcon(String? category) {
-    switch (category) {
-      case 'exam': return Icons.quiz;
-      case 'academic': return Icons.assignment;
-      case 'competency': return Icons.star;
-      case 'journal': return Icons.menu_book;
-      default: return Icons.task;
-    }
-  }
+  @override
+  Widget build(BuildContext context) {
+    if (_loading) return const LoadingView();
+    if (_error != null && _items.isEmpty) return ErrorState(message: _error!, onRetry: reload);
 
-  Color _getCategoryColor(String? category) {
-    switch (category) {
-      case 'exam': return Colors.purple;
-      case 'academic': return Colors.blue;
-      case 'competency': return Colors.orange;
-      case 'journal': return Colors.indigo;
-      default: return AppColors.primaryPurple;
-    }
-  }
-
-  String _getCategoryLabel(String? category) {
-    switch (category) {
-      case 'exam': return 'Ujian';
-      case 'academic': return 'Tugas Akademik';
-      case 'competency': return 'Kompetensi';
-      case 'journal': return 'Journal Reading';
-      default: return category ?? '-';
-    }
-  }
-
-  void _showDetailsDialog(Map<String, dynamic> item) {
-    final catColor = _getCategoryColor(item['type_category']);
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Row(
-          children: [
-            CircleAvatar(
-              backgroundColor: catColor.withOpacity(0.15),
-              radius: 18,
-              child: Icon(_getCategoryIcon(item['type_category']), color: catColor, size: 18),
+    final visible = _visible;
+    return RefreshIndicator(
+      onRefresh: reload,
+      child: AdminListView(
+        children: [
+          _buildSummary(),
+          if (_error != null)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: NoteBox(title: 'Perhatian', text: _error!, color: AppColors.warningOrange, icon: Icons.warning_amber),
             ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text('Detail Pengajuan',
-                  style: const TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold)),
-            ),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _detailRow(Icons.person, 'PPDS', item['user_name'] ?? '-'),
-            const SizedBox(height: 8),
-            _detailRow(Icons.category, 'Kategori', _getCategoryLabel(item['type_category'])),
-            const SizedBox(height: 8),
-            if (item['title'] != null)
-              _detailRow(Icons.title, 'Judul', item['title']),
-            if (item['exam_name'] != null)
-              _detailRow(Icons.quiz, 'Ujian', item['exam_name']),
-            if (item['competency_name'] != null)
-              _detailRow(Icons.star, 'Kompetensi', item['competency_name']),
-            if (item['notes'] != null && item['notes'].toString().isNotEmpty) ...[
-              const SizedBox(height: 8),
-              _detailRow(Icons.notes, 'Catatan', item['notes']),
-            ],
-            const SizedBox(height: 16),
-            if (item['document_proof_url'] != null || item['evidence_url'] != null)
-              SizedBox(
-                width: double.infinity,
-                child: OutlinedButton.icon(
-                  onPressed: () async {
-                    final url = (item['document_proof_url'] ?? item['evidence_url']) as String?;
-                    if (url == null || !isUsableEvidenceUrl(url)) {
-                      if (ctx.mounted) {
-                        ScaffoldMessenger.of(ctx).showSnackBar(
-                          const SnackBar(content: Text('Link bukti tidak valid atau belum tersedia.')),
-                        );
-                      }
-                      return;
-                    }
-
-                    try {
-                      final uri = Uri.parse(url);
-                      await launchUrl(uri, mode: LaunchMode.externalApplication);
-                    } catch (e) {
-                      if (ctx.mounted) {
-                        ScaffoldMessenger.of(ctx).showSnackBar(
-                          SnackBar(content: Text('Tidak bisa membuka bukti: $url')),
-                        );
-                      }
-                    }
-                  },
-                  icon: const Icon(Icons.open_in_browser),
-                  label: const Text('Buka Link Lampiran (Drive)'),
-                ),
-              )
-            else
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: Colors.red.shade50,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: const Row(
-                  children: [
-                    Icon(Icons.warning, color: Colors.red, size: 16),
-                    SizedBox(width: 6),
-                    Text('Tidak ada lampiran bukti', style: TextStyle(color: Colors.red, fontSize: 13)),
-                  ],
-                ),
-              ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Tutup'),
-          ),
-          OutlinedButton(
-            style: OutlinedButton.styleFrom(foregroundColor: Colors.red),
-            onPressed: () {
-              Navigator.pop(ctx);
-              _verifyItem(item['type_category'], item['id'], 'reject');
-            },
-            child: const Text('Tolak'),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.green, foregroundColor: Colors.white),
-            onPressed: () {
-              Navigator.pop(ctx);
-              _verifyItem(item['type_category'], item['id'], 'approve');
-            },
-            child: const Text('Setujui ✓'),
-          ),
+          _buildFilters(),
+          const SizedBox(height: 12),
+          if (visible.isEmpty)
+            EmptyState(
+              icon: Icons.task_alt,
+              title: _items.isEmpty ? 'Semua pengajuan sudah diproses' : 'Tidak ada pengajuan di kategori ini',
+              message: _items.isEmpty ? 'Tarik ke bawah untuk memuat ulang.' : null,
+            )
+          else
+            for (final item in visible) _ItemCard(item: item, onOpen: () => _open(item)),
         ],
       ),
     );
   }
 
-  Widget _detailRow(IconData icon, String label, String value) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Icon(icon, size: 16, color: Colors.grey),
-        const SizedBox(width: 8),
-        Expanded(
-          child: RichText(
-            text: TextSpan(
-              style: const TextStyle(color: Colors.black87, fontSize: 13),
-              children: [
-                TextSpan(
-                    text: '$label: ',
-                    style: const TextStyle(fontWeight: FontWeight.bold)),
-                TextSpan(text: value),
-              ],
+  Widget _buildSummary() {
+    final total = _items.length;
+    return AppCard(
+      color: AppColors.lightPurpleAccent.withValues(alpha: 0.35),
+      borderColor: AppColors.lightPurpleAccent,
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        InkWell(
+          onTap: () => setState(() => _summaryOpen = !_summaryOpen),
+          child: Row(children: [
+            const Icon(Icons.inbox_outlined, color: AppColors.primaryPurple),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                total == 0 ? 'Tidak ada pengajuan yang menunggu' : '$total pengajuan menunggu tindakan Anda',
+                style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: AppColors.textDark),
+              ),
             ),
-          ),
+            Icon(_summaryOpen ? Icons.expand_less : Icons.expand_more, color: AppColors.textGrey),
+          ]),
         ),
-      ],
+        if (_summaryOpen) ...[
+          const SizedBox(height: 12),
+          Wrap(spacing: 8, runSpacing: 8, children: [
+            for (final c in VerifCategory.all)
+              _CountTile(
+                label: c.label,
+                count: _count(c.key),
+                icon: c.icon,
+                color: c.color,
+                selected: _filter == c.key,
+                onTap: () => setState(() => _filter = _filter == c.key ? 'all' : c.key),
+              ),
+          ]),
+          if (_penelitianMenunggu != null) ...[
+            const SizedBox(height: 8),
+            NoteBox(
+              title: 'Penelitian menunggu penilai: $_penelitianMenunggu',
+              text: 'Informasi saja. Penelitian direview oleh pembimbing/penilai masing-masing PPDS.',
+              icon: Icons.science_outlined,
+            ),
+          ],
+        ],
+      ]),
     );
   }
 
+  Widget _buildFilters() {
+    final chips = <MapEntry<String, String>>[
+      MapEntry('all', 'Semua (${_items.length})'),
+      for (final c in VerifCategory.all) MapEntry(c.key, '${c.label} (${_count(c.key)})'),
+    ];
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(children: [
+        for (final e in chips)
+          Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: ChoiceChip(
+              label: Text(e.value, style: const TextStyle(fontSize: 13)),
+              selected: _filter == e.key,
+              onSelected: (_) => setState(() => _filter = e.key),
+            ),
+          ),
+      ]),
+    );
+  }
+}
+
+class _CountTile extends StatelessWidget {
+  final String label;
+  final int count;
+  final IconData icon;
+  final Color color;
+  final bool selected;
+  final VoidCallback onTap;
+  const _CountTile({required this.label, required this.count, required this.icon, required this.color,
+      required this.selected, required this.onTap});
+
   @override
   Widget build(BuildContext context) {
-    return RefreshIndicator(
-      onRefresh: _loadData,
-      child: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : _pendingItems.isEmpty
-              ? Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.check_circle_outline,
-                          size: 72, color: Colors.green.withOpacity(0.6)),
-                      const SizedBox(height: 16),
-                      const Text('Semua pengajuan sudah diproses!',
-                          style: TextStyle(
-                              fontFamily: 'Poppins',
-                              fontWeight: FontWeight.bold,
-                              fontSize: 16)),
-                      const SizedBox(height: 8),
-                      Text('Tidak ada yang menunggu verifikasi',
-                          style: TextStyle(color: AppColors.textGrey, fontFamily: 'Poppins')),
-                      const SizedBox(height: 24),
-                      OutlinedButton.icon(
-                        onPressed: _loadData,
-                        icon: const Icon(Icons.refresh),
-                        label: const Text('Refresh'),
-                      ),
-                    ],
-                  ),
-                )
-              : ListView.builder(
-                  padding: const EdgeInsets.all(16),
-                  itemCount: _pendingItems.length,
-                  itemBuilder: (context, index) {
-                    final item = _pendingItems[index];
-                    final catColor = _getCategoryColor(item['type_category']);
-                    String title = item['title'] ??
-                        item['exam_name'] ??
-                        item['competency_name'] ??
-                        'Item';
+    return Material(
+      color: selected ? color.withValues(alpha: 0.14) : Colors.white,
+      borderRadius: BorderRadius.circular(12),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: onTap,
+        child: Container(
+          width: 140,
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: selected ? color : AppColors.cardBorder),
+          ),
+          child: Row(children: [
+            Icon(icon, color: color, size: 22),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text('$count', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: color)),
+                Text(label, style: const TextStyle(fontSize: 12, color: AppColors.textGrey)),
+              ]),
+            ),
+          ]),
+        ),
+      ),
+    );
+  }
+}
 
-                    return Card(
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(14)),
-                      elevation: 2,
-                      margin: const EdgeInsets.only(bottom: 12),
-                      child: Padding(
-                        padding: const EdgeInsets.all(14),
-                        child: Row(
-                          children: [
-                            CircleAvatar(
-                              backgroundColor: catColor.withOpacity(0.15),
-                              radius: 22,
-                              child: Icon(_getCategoryIcon(item['type_category']),
-                                  color: catColor, size: 20),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(title,
-                                      style: const TextStyle(
-                                          fontWeight: FontWeight.bold,
-                                          fontFamily: 'Poppins',
-                                          fontSize: 14),
-                                      maxLines: 2,
-                                      overflow: TextOverflow.ellipsis),
-                                  const SizedBox(height: 3),
-                                  Text('PPDS: ${item['user_name'] ?? '-'}',
-                                      style: TextStyle(
-                                          fontSize: 12, color: AppColors.textGrey)),
-                                  Container(
-                                    margin: const EdgeInsets.only(top: 4),
-                                    padding: const EdgeInsets.symmetric(
-                                        horizontal: 8, vertical: 2),
-                                    decoration: BoxDecoration(
-                                      color: catColor.withOpacity(0.1),
-                                      borderRadius: BorderRadius.circular(8),
-                                    ),
-                                    child: Text(
-                                      _getCategoryLabel(item['type_category']),
-                                      style: TextStyle(
-                                          color: catColor,
-                                          fontSize: 11,
-                                          fontWeight: FontWeight.w600),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            ElevatedButton(
-                              style: ElevatedButton.styleFrom(
-                                  backgroundColor: AppColors.primaryPurple,
-                                  foregroundColor: Colors.white,
-                                  padding: const EdgeInsets.symmetric(
-                                      horizontal: 12, vertical: 8),
-                                  shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(10))),
-                              onPressed: () => _showDetailsDialog(item),
-                              child: const Text('Periksa',
-                                  style: TextStyle(fontSize: 13, fontFamily: 'Poppins')),
-                            ),
-                          ],
-                        ),
-                      ),
-                    );
-                  },
-                ),
+class _ItemCard extends StatelessWidget {
+  final VerifItem item;
+  final VoidCallback onOpen;
+  const _ItemCard({required this.item, required this.onOpen});
+
+  @override
+  Widget build(BuildContext context) {
+    final cat = item.category;
+    return AppCard(
+      onTap: onOpen,
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          CircleAvatar(
+            radius: 20,
+            backgroundColor: cat.color.withValues(alpha: 0.12),
+            child: Icon(cat.icon, color: cat.color, size: 20),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(item.title,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: AppColors.textDark)),
+              const SizedBox(height: 2),
+              Text('PPDS: ${item.userName}', style: const TextStyle(fontSize: 14, color: AppColors.textDark)),
+              if (item.meta.isNotEmpty)
+                Text(item.meta.join(' · '), style: const TextStyle(fontSize: 12, color: AppColors.textGrey)),
+            ]),
+          ),
+          const SizedBox(width: 8),
+          TagChip(cat.label, color: cat.color),
+        ]),
+        if (item.resume != null) ...[
+          const SizedBox(height: 8),
+          _Snippet(title: item.category.key == 'academic' ? 'Resume' : 'Catatan', text: item.resume!),
+        ],
+        if (item.syarat != null) ...[
+          const SizedBox(height: 8),
+          _Snippet(title: 'Syarat', text: item.syarat!),
+        ],
+        const SizedBox(height: 8),
+        Row(children: [
+          if (item.evidenceUrl != null)
+            LinkButton(label: 'Buka bukti', url: item.evidenceUrl)
+          else
+            Text(item.category.key == 'journal' ? 'Pengajuan judul' : 'Tanpa link bukti',
+                style: const TextStyle(fontSize: 12, color: AppColors.textGrey)),
+          const Spacer(),
+          FilledButton.tonal(onPressed: onOpen, child: const Text('Periksa')),
+        ]),
+      ]),
+    );
+  }
+}
+
+class _Snippet extends StatelessWidget {
+  final String title;
+  final String text;
+  const _Snippet({required this.title, required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(color: AppColors.backgroundLightest, borderRadius: BorderRadius.circular(10)),
+      child: Text.rich(
+        TextSpan(children: [
+          TextSpan(text: '$title: ', style: const TextStyle(fontWeight: FontWeight.w700)),
+          TextSpan(text: text),
+        ]),
+        maxLines: 3,
+        overflow: TextOverflow.ellipsis,
+        style: const TextStyle(fontSize: 13, color: AppColors.textDark),
+      ),
     );
   }
 }

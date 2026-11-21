@@ -1,375 +1,268 @@
 import 'package:flutter/material.dart';
 import 'package:fp_pemrograman/colors.dart';
-import 'package:fp_pemrograman/service/api_service.dart';
-import 'package:fp_pemrograman/widgets/responsive_wrapper.dart';
-import 'package:intl/intl.dart';
-import 'package:file_picker/file_picker.dart';
+import 'package:fp_pemrograman/screens/ppds_modules/module_common.dart';
+import 'package:fp_pemrograman/utils/labels.dart';
+import 'package:fp_pemrograman/widgets/ui.dart';
 
+/// Ujian lokal & nasional (bukti dikirim PPDS, diverifikasi admin) serta
+/// ujian organ (hasil diisi penguji).
 class ExamsScreen extends StatefulWidget {
   const ExamsScreen({super.key});
   @override
   State<ExamsScreen> createState() => _ExamsScreenState();
 }
 
-class _ExamsScreenState extends State<ExamsScreen> with SingleTickerProviderStateMixin {
-  final ApiService _api = ApiService();
+class _ExamsScreenState extends State<ExamsScreen> {
+  final ModuleApi _api = ModuleApi();
   List<dynamic> _exams = [];
-  List<dynamic> _organExams = [];
-  bool _isLoading = true;
-  late TabController _tabController;
+  List<dynamic> _organ = [];
+  bool _loading = true;
+  String? _error;
+  String? _organError;
 
-  final List<String> _tabs = ['Semua', 'Lokal', 'Nasional', 'Organ'];
+  static const List<String> _tabs = ['Semua', 'Lokal', 'Nasional', 'Organ'];
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: _tabs.length, vsync: this);
-    _loadExams();
+    _load();
   }
 
-  @override
-  void dispose() {
-    _tabController.dispose();
-    super.dispose();
-  }
-
-  void _loadExams() async {
-    final data = await _api.getExams();
-    final organData = await _api.getMyOrganExams();
+  Future<void> _load() async {
+    final exams = await _api.list('/exams');
+    final examErr = exams == null ? _api.errorMessage : null;
+    final organ = await _api.list('/organ-exams');
+    final organErr = organ == null ? _api.errorMessage : null;
+    if (!mounted) return;
     setState(() {
-      _exams = data;
-      _organExams = organData;
-      _isLoading = false;
+      _loading = false;
+      _error = examErr;
+      _organError = organErr;
+      if (exams != null) _exams = exams;
+      if (organ != null) _organ = organ;
     });
   }
 
-  List<dynamic> _filterExams(String type) {
-    if (type == 'Semua') return _exams;
-    return _exams.where((e) => e['exam_type'] == type).toList();
+  /// Teks syarat dari `notes` (diisi saat kurikulum dibuat), tanpa awalan "Syarat:".
+  String _syarat(dynamic notes) {
+    final s = str(notes);
+    // Teks bawaan diawali "Syarat ..." / "Syarat: ..." — label "Syarat" sudah ditampilkan.
+    final cleaned = s.replaceFirst(RegExp(r'^syarat\b\s*:?\s*', caseSensitive: false), '');
+    return cleaned.isEmpty ? s : '${cleaned[0].toUpperCase()}${cleaned.substring(1)}';
+  }
+
+  Future<void> _open(Map<String, dynamic> e) async {
+    final result = str(e['result']);
+    if (result == 'lulus') {
+      showSnack(context, 'Ujian ini sudah dinyatakan lulus dan tidak bisa diubah lagi.');
+      return;
+    }
+    final pending = result == 'pending_verification';
+    final failed = result == 'tidak_lulus';
+    final rejected = str(e['alasan_tolak']).isNotEmpty && !failed;
+    final name = str(e['exam_name']);
+    final res = await showSubmitLinkDialog(
+      context,
+      title: pending
+          ? 'Ubah link bukti ujian'
+          : failed
+              ? 'Kirim bukti ujian remedial'
+              : rejected
+                  ? 'Kirim ulang bukti ujian'
+                  : 'Kirim bukti hasil ujian',
+      description: pending
+          ? '$name\n\nBukti sedang menunggu verifikasi admin. Anda masih bisa mengganti link-nya.'
+          : failed
+              ? '$name\n\nSetelah mengikuti ujian ulang/remedial, kirim bukti hasilnya untuk diverifikasi kembali.'
+              : rejected
+                  ? '$name\n\nPerbaiki bukti sesuai alasan penolakan, lalu kirim ulang.'
+                  : '$name\n\nUnggah bukti hasil ujian (mis. berita acara atau sertifikat) ke Google Drive, lalu tempel link-nya.',
+      initialLink: failed ? '' : str(e['evidence_url']),
+      submitText: pending ? 'Simpan perubahan' : 'Kirim untuk diverifikasi',
+    );
+    if (res == null || !mounted) return;
+    final ok = await _api.ok('PUT', '/exams/${e['id']}',
+        body: {'result': 'pending_verification', 'evidence_url': res['link']});
+    if (!mounted) return;
+    if (ok) {
+      showSnack(context, pending ? 'Link bukti diperbarui.' : 'Bukti ujian terkirim. Menunggu verifikasi admin.');
+      _load();
+    } else {
+      showSnack(context, _api.errorMessage, error: true);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.backgroundLightest,
-      appBar: AppBar(
-        title: const Text('Ujian PPDS', style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold)),
-        backgroundColor: AppColors.primaryPurple,
-        foregroundColor: Colors.white,
-        elevation: 0,
-        bottom: TabBar(
-          controller: _tabController,
-          isScrollable: true,
-          indicatorColor: AppColors.accentRed,
-          labelColor: Colors.white,
-          unselectedLabelColor: Colors.white60,
-          labelStyle: const TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.w600, fontSize: 12),
-          tabs: _tabs.map((t) => Tab(text: t)).toList(),
+    return DefaultTabController(
+      length: _tabs.length,
+      child: Scaffold(
+        // Ditampilkan sebagai tab di dalam DashboardScreen yang sudah punya
+        // AppBar (judul, notifikasi, akun) — di sini cukup baris tab-nya.
+        appBar: AppBar(
+          primary: false,
+          toolbarHeight: 0,
+          automaticallyImplyLeading: false,
+          bottom: moduleTabBar(_tabs, scrollable: true),
         ),
+        body: TabBarView(children: _tabs.map(_buildTab).toList()),
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : ResponsiveWrapper(
-              child: TabBarView(
-                controller: _tabController,
-                children: _tabs.map((type) {
-                  final bool isOrganTab = type == 'Organ';
-                  final list = isOrganTab ? _organExams : _filterExams(type);
-                  
-                  if (list.isEmpty) {
-                    return Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(Icons.school_outlined, size: 64, color: AppColors.textGrey.withOpacity(0.5)),
-                          const SizedBox(height: 12),
-                          Text(isOrganTab ? 'Belum ada ujian organ' : 'Belum ada data ujian', style: TextStyle(color: AppColors.textGrey, fontFamily: 'Poppins')),
-                        ],
-                      ),
-                    );
-                  }
-                  return ListView.builder(
-                    padding: const EdgeInsets.all(16),
-                    itemCount: list.length,
-                    itemBuilder: (ctx, i) => isOrganTab
-                        ? _buildOrganExamCard(list[i])
-                        : InkWell(
-                            onTap: () => _handleExamTap(list[i]),
-                            child: _buildExamCard(list[i])),
-                  );
-                }).toList(),
-              ),
-            ),
     );
   }
 
-  Future<void> _handleExamTap(Map<String, dynamic> exam) async {
-    final currentStatus = exam['result'] ?? 'terjadwal';
-    
-    if (currentStatus == 'lulus' || currentStatus == 'tidak_lulus') {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Ujian ini sudah selesai dinilai.')));
-      return;
-    }
-    
-    if (currentStatus == 'pending_verification') {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Menunggu verifikasi admin.')));
-      return;
-    }
-
-    final TextEditingController _urlController = TextEditingController();
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-        title: const Text('Kirim Bukti Ujian', style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold, fontSize: 20)),
-        contentPadding: const EdgeInsets.only(left: 24, right: 24, top: 16, bottom: 8),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            TextField(
-              controller: _urlController,
-              style: const TextStyle(fontFamily: 'Poppins', fontSize: 14),
-              decoration: InputDecoration(
-                hintText: 'Tempel link Google Drive di sini...',
-                hintStyle: TextStyle(fontFamily: 'Poppins', fontSize: 13, color: AppColors.textGrey),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                contentPadding: const EdgeInsets.all(16),
-              ),
-            ),
-          ],
-        ),
-        actionsPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10)),
-            child: Text('Batal', style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.w600, color: AppColors.textGrey))
+  Widget _buildTab(String tab) {
+    if (tab == 'Organ') {
+      return moduleBody(
+        loading: _loading,
+        error: _organError,
+        onRefresh: _load,
+        builder: () => [
+          const Padding(
+            padding: EdgeInsets.only(bottom: 12),
+            child: Text('Jadwal dan hasil ujian organ diisi oleh admin dan dosen penguji.', style: kCaption),
           ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.primaryPurple,
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            ),
-            onPressed: () async {
-              if (_urlController.text.trim().isEmpty) return;
-              Navigator.pop(ctx);
-              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Mengirim bukti...')));
-              final success = await _api.updateExamEvidence(exam['id'], 'pending_verification', _urlController.text.trim());
-              if (success) {
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Bukti berhasil dikirim. Menunggu verifikasi admin.')));
-                _loadExams();
-              } else {
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Gagal mengirim bukti.')));
-              }
-            },
-            child: const Text('Kirim', style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold)),
-          ),
+          if (_organ.isEmpty)
+            const EmptyState(
+              icon: Icons.medical_services_outlined,
+              title: 'Belum ada ujian organ',
+              message: 'Ujian organ akan muncul di sini setelah dijadwalkan admin.',
+            )
+          else
+            ..._organ.map((o) => _organCard(o as Map<String, dynamic>)),
         ],
-      ),
+      );
+    }
+    return moduleBody(
+      loading: _loading,
+      error: _error,
+      onRefresh: _load,
+      builder: () {
+        final items = tab == 'Semua' ? _exams : _exams.where((e) => e['exam_type'] == tab).toList();
+        final lulus = items.where((e) => e['result'] == 'lulus').length;
+        return [
+          ModuleProgressCard(
+            title: tab == 'Semua' ? 'Ujian lokal & nasional' : 'Ujian $tab',
+            done: lulus,
+            total: items.length,
+            doneLabel: 'lulus',
+            caption: 'Ketuk ujian untuk mengirim bukti hasil ujian.',
+          ),
+          if (items.isEmpty)
+            const EmptyState(icon: Icons.school_outlined, title: 'Belum ada data ujian')
+          else
+            ...items.map((e) => _examCard(e as Map<String, dynamic>)),
+        ];
+      },
     );
   }
 
-  Widget _buildExamCard(Map<String, dynamic> exam) {
-    bool isPassed = exam['result'] == 'lulus';
-    bool isFailed = exam['result'] == 'tidak_lulus';
-    bool isPending = exam['result'] == 'pending_verification';
+  Widget _examCard(Map<String, dynamic> e) {
+    final result = str(e['result']);
+    final alasan = str(e['alasan_tolak']);
+    final lulus = result == 'lulus';
+    final pending = result == 'pending_verification';
+    final failed = result == 'tidak_lulus';
+    final color = phaseColor(e['phase_category']);
+    final syarat = _syarat(e['notes']);
 
-    String? scheduledDate = exam['scheduled_date'] != null
-        ? DateFormat('dd MMM yyyy').format(DateTime.parse(exam['scheduled_date']).toLocal())
-        : null;
-
-    Color statusColor = Colors.grey;
-    String statusLabel = 'Upload Bukti';
-    if (isPassed) {
-      statusColor = AppColors.successGreen;
-      statusLabel = 'Lulus';
-    } else if (isFailed) {
-      statusColor = AppColors.accentRed;
-      statusLabel = 'Tidak Lulus';
-    } else if (isPending) {
-      statusColor = AppColors.warningOrange;
-      statusLabel = 'Sedang Verifikasi';
+    String? actionLabel;
+    IconData actionIcon = Icons.upload;
+    if (pending) {
+      actionLabel = 'Ubah link bukti';
+      actionIcon = Icons.edit;
+    } else if (failed) {
+      actionLabel = 'Kirim bukti remedial';
+      actionIcon = Icons.replay;
+    } else if (!lulus && alasan.isNotEmpty) {
+      actionLabel = 'Kirim ulang bukti';
+      actionIcon = Icons.refresh;
+    } else if (!lulus) {
+      actionLabel = 'Kirim bukti hasil ujian';
     }
 
-    Color phaseColor = AppColors.textGrey;
-    switch (exam['phase_category']?.toString().toLowerCase()) {
-      case 'red': phaseColor = Colors.red.shade600; break;
-      case 'yellow': phaseColor = Colors.orange.shade600; break;
-      case 'green': phaseColor = Colors.green.shade600; break;
-    }
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.06), blurRadius: 10, offset: const Offset(0, 4))],
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: phaseColor.withOpacity(0.12),
-                shape: BoxShape.circle,
-              ),
-              child: Icon(Icons.school, color: phaseColor, size: 28),
-            ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(exam['exam_name'] ?? '-',
-                      style: const TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold, fontSize: 14)),
-                  const SizedBox(height: 4),
-                  Text(exam['exam_type'] ?? '-',
-                      style: TextStyle(fontFamily: 'Poppins', fontSize: 12, color: AppColors.textGrey)),
-                  if (scheduledDate != null) ...[
-                    const SizedBox(height: 2),
-                    Row(
-                      children: [
-                        Icon(Icons.calendar_today, size: 12, color: AppColors.textGrey),
-                        const SizedBox(width: 4),
-                        Text(scheduledDate,
-                            style: TextStyle(fontFamily: 'Poppins', fontSize: 12, color: AppColors.textGrey)),
-                      ],
-                    ),
-                  ],
-                  if (exam['score'] != null) ...[
-                    const SizedBox(height: 4),
-                    Text('Nilai: ${exam['score']}',
-                        style: TextStyle(
-                            fontFamily: 'Poppins',
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                            color: statusColor)),
-                  ],
-                  if (exam['notes'] != null && exam['notes'].toString().isNotEmpty) ...[
-                    const SizedBox(height: 6),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: Colors.blue.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(4),
-                        border: Border.all(color: Colors.blue.withOpacity(0.3)),
-                      ),
-                      child: Text(
-                        exam['notes'],
-                        style: const TextStyle(
-                            fontFamily: 'Poppins',
-                            fontSize: 10,
-                            fontStyle: FontStyle.italic,
-                            color: Colors.blueAccent),
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-              decoration: BoxDecoration(
-                color: statusColor.withOpacity(0.12),
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: Text(statusLabel,
-                  style: TextStyle(
-                      fontFamily: 'Poppins', fontSize: 11, fontWeight: FontWeight.bold, color: statusColor)),
-            ),
-          ],
-        ),
-      ),
+    return AppCard(
+      onTap: () => _open(e),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(color: color.withValues(alpha: 0.12), shape: BoxShape.circle),
+            child: Icon(Icons.school, color: color, size: 24),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(str(e['exam_name']).isEmpty ? '-' : str(e['exam_name']), style: kCardTitle),
+              const SizedBox(height: 6),
+              Wrap(spacing: 8, runSpacing: 6, crossAxisAlignment: WrapCrossAlignment.center, children: [
+                StatusChip(examStatus(result, alasanTolak: alasan)),
+                if (str(e['phase_category']).isNotEmpty) PhaseBadge(e['phase_category']),
+              ]),
+            ]),
+          ),
+        ]),
+        const SizedBox(height: 6),
+        MetaRow(icon: Icons.category_outlined, label: 'Jenis', value: str(e['exam_type'])),
+        if (str(e['scheduled_date']).isNotEmpty)
+          MetaRow(icon: Icons.event, label: 'Jadwal', value: formatTanggal(e['scheduled_date'])),
+        MetaRow(icon: Icons.rule, label: 'Syarat', value: syarat),
+        if (e['score'] != null) MetaRow(icon: Icons.grade_outlined, label: 'Nilai', value: '${e['score']}'),
+        if (alasan.isNotEmpty && !pending)
+          NoteBox(
+            title: failed ? 'Keterangan admin' : 'Alasan bukti ditolak',
+            text: alasan,
+            color: AppColors.errorRed,
+            icon: Icons.error_outline,
+          ),
+        if (failed)
+          const NoteBox(
+            title: 'Ujian remedial',
+            text: 'Anda dinyatakan belum lulus. Setelah mengikuti ujian ulang, kirim bukti hasilnya untuk diverifikasi.',
+            color: AppColors.warningOrange,
+            icon: Icons.info_outline,
+          ),
+        if (str(e['evidence_url']).isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: LinkButton(label: 'Lihat bukti', url: str(e['evidence_url'])),
+          ),
+        if (actionLabel != null)
+          CardActionButton(label: actionLabel, icon: actionIcon, outlined: pending, onPressed: () => _open(e))
+        else
+          const Padding(
+            padding: EdgeInsets.only(top: 8),
+            child: Text('Sudah lulus — tidak bisa diubah lagi.', style: kCaption),
+          ),
+      ]),
     );
   }
 
-  Widget _buildOrganExamCard(Map<String, dynamic> exam) {
-    Color statusColor = Colors.grey;
-    String statusLabel = (exam['hasil'] ?? 'terjadwal').toString();
-    if (statusLabel == 'lulus') {
-      statusColor = AppColors.successGreen;
-      statusLabel = 'Lulus';
-    } else if (statusLabel == 'tidak_lulus') {
-      statusColor = AppColors.accentRed;
-      statusLabel = 'Tidak Lulus';
-    } else {
-      statusColor = AppColors.warningOrange;
-      statusLabel = 'Terjadwal';
-    }
-
-    String? scheduledDate = exam['tanggal'] != null
-        ? DateFormat('dd MMM yyyy').format(DateTime.parse(exam['tanggal']).toLocal())
-        : null;
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.06), blurRadius: 10, offset: const Offset(0, 4))],
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: AppColors.primaryPurple.withOpacity(0.12),
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(Icons.medical_services, color: AppColors.primaryPurple, size: 28),
-            ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(exam['nama_ujian'] ?? 'Ujian Organ',
-                      style: const TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold, fontSize: 14)),
-                  const SizedBox(height: 4),
-                  Text('Organ: ${exam['organ'] ?? '-'}',
-                      style: TextStyle(fontFamily: 'Poppins', fontSize: 12, color: AppColors.textGrey)),
-                  Text('Penguji: ${exam['penguji'] ?? '-'}',
-                      style: TextStyle(fontFamily: 'Poppins', fontSize: 11, color: AppColors.textGrey)),
-                  if (exam['nilai'] != null)
-                    Text('Nilai: ${exam['nilai']}',
-                        style: const TextStyle(fontFamily: 'Poppins', fontSize: 12, fontWeight: FontWeight.w600)),
-                  if ((exam['catatan'] ?? '').toString().isNotEmpty)
-                    Text('Catatan: ${exam['catatan']}',
-                        style: TextStyle(fontFamily: 'Poppins', fontSize: 11, color: AppColors.textGrey)),
-                  if (scheduledDate != null) ...[
-                    const SizedBox(height: 4),
-                    Row(
-                      children: [
-                        Icon(Icons.calendar_today, size: 12, color: AppColors.textGrey),
-                        const SizedBox(width: 4),
-                        Text(scheduledDate,
-                            style: TextStyle(fontFamily: 'Poppins', fontSize: 12, color: AppColors.textGrey)),
-                      ],
-                    ),
-                  ],
-                ],
-              ),
-            ),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-              decoration: BoxDecoration(
-                color: statusColor.withOpacity(0.12),
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: Text(statusLabel,
-                  style: TextStyle(
-                      fontFamily: 'Poppins', fontSize: 11, fontWeight: FontWeight.bold, color: statusColor)),
-            ),
-          ],
-        ),
-      ),
+  Widget _organCard(Map<String, dynamic> o) {
+    final hasil = str(o['hasil']);
+    return AppCard(
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(color: AppColors.primaryPurple.withValues(alpha: 0.12), shape: BoxShape.circle),
+            child: const Icon(Icons.medical_services, color: AppColors.primaryPurple, size: 24),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(str(o['nama_ujian']).isEmpty ? 'Ujian Organ' : str(o['nama_ujian']), style: kCardTitle),
+              const SizedBox(height: 6),
+              StatusChip(examStatus(hasil.isEmpty ? 'terjadwal' : hasil)),
+            ]),
+          ),
+        ]),
+        const SizedBox(height: 6),
+        MetaRow(icon: Icons.biotech_outlined, label: 'Organ', value: str(o['organ'])),
+        MetaRow(icon: Icons.person_outline, label: 'Penguji', value: str(o['penguji'])),
+        if (str(o['tanggal']).isNotEmpty) MetaRow(icon: Icons.event, label: 'Tanggal', value: formatTanggal(o['tanggal'])),
+        if (o['nilai'] != null) MetaRow(icon: Icons.grade_outlined, label: 'Nilai', value: '${o['nilai']}'),
+        if (str(o['catatan']).isNotEmpty) NoteBox(title: 'Catatan penguji', text: str(o['catatan'])),
+      ]),
     );
   }
 }

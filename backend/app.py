@@ -29,7 +29,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 
 from models import (db, User, Reminder, CompetencyLog, Exam, AcademicTask, ExternalRotation,
                     JournalReadingSubmission, Penelitian, PengabdianMasyarakat, Prestasi,
-                    AdminNotification, Survey, OrganExam, AppConfig, LoginThrottle)
+                    AdminNotification, Survey, OrganExam, AppConfig, LoginThrottle, Penilaian)
 
 load_dotenv()
 log = logging.getLogger('pathoengage')
@@ -274,8 +274,20 @@ _ADDED_COLUMNS = {
     'prestasi': {'juara_ke': 'VARCHAR(50)', 'waktu_pelaksanaan': 'TIMESTAMP'},
     'pengabdian_masyarakat': {'peran': 'VARCHAR(200)'},
     'penelitian': {'catatan_penilai': 'TEXT'},
+    'user': {
+        'dosen_wali_id': 'INTEGER',
+        'pembimbing_1_id': 'INTEGER',
+        'pembimbing_2_id': 'INTEGER',
+        'pembimbing_retrospektif_id': 'INTEGER',
+        'phase_updated_at': 'TIMESTAMP',
+    },
+    'organ_exam': {'penguji_id': 'INTEGER'},
+    'admin_notification': {'target_user_id': 'INTEGER'},
+    'competency_log': {'alasan_tolak': 'TEXT'},
+    'exam': {'alasan_tolak': 'TEXT'},
+    'academic_task': {'alasan_tolak': 'TEXT'},
 }
-_AUX_TABLES = (AppConfig.__table__, LoginThrottle.__table__)
+_AUX_TABLES = (AppConfig.__table__, LoginThrottle.__table__, Penilaian.__table__)
 
 
 def _existing_columns(table_names):
@@ -311,16 +323,21 @@ def _ensure_aux_tables():
     ]
     if missing_tables or missing_columns:
         is_pg = db.engine.dialect.name == 'postgresql'
-        try:
+        # Setiap perubahan di transaksi pendek sendiri, sehingga kunci tabel
+        # hanya ditahan sesaat (ADD COLUMN nullable di Postgres hanya ubah metadata).
+        def _ddl(run):
             with db.engine.begin() as conn:
                 if is_pg:
                     conn.execute(db.text("SET LOCAL lock_timeout = '3s'"))
                     conn.execute(db.text("SET LOCAL statement_timeout = '15s'"))
-                for table in missing_tables:
-                    table.create(bind=conn, checkfirst=True)
-                for table, column, sql_type in missing_columns:
-                    if_not_exists = 'IF NOT EXISTS ' if is_pg else ''
-                    conn.execute(db.text(f'ALTER TABLE {table} ADD COLUMN {if_not_exists}{column} {sql_type}'))
+                run(conn)
+        try:
+            for table, column, sql_type in missing_columns:
+                if_not_exists = 'IF NOT EXISTS ' if is_pg else ''
+                _ddl(lambda conn, t=table, c=column, s=sql_type: conn.execute(
+                    db.text(f'ALTER TABLE "{t}" ADD COLUMN {if_not_exists}{c} {s}')))
+            for table in missing_tables:
+                _ddl(lambda conn, t=table: t.create(bind=conn, checkfirst=True))
         except Exception:
             # Instance lain mungkin melakukannya bersamaan; cukup pastikan hasilnya ada.
             existing = _existing_columns(names)
@@ -578,7 +595,114 @@ def user_dict(user):
         'pembimbing_retrospektif': getattr(user, 'pembimbing_retrospektif', None),
         'warning_active': getattr(user, 'warning_active', False),
         'warning_message': getattr(user, 'warning_message', None),
+        'dosen_wali_id': user.dosen_wali_id,
+        'pembimbing_1_id': user.pembimbing_1_id,
+        'pembimbing_2_id': user.pembimbing_2_id,
+        'pembimbing_retrospektif_id': user.pembimbing_retrospektif_id,
     }
+
+
+# ── Kalung (phase): syarat & kenaikan otomatis ───────────────────────────────
+#
+# Aturan mengikuti teks "Syarat Transisi" di aplikasi:
+#   MKDU   -> Merah  : menyelesaikan MKDU (tidak tercatat di sistem -> admin)
+#   Merah  -> Kuning : lulus "Ujian Organ I"
+#   Kuning -> Hijau  : lulus "Ujian Organ II"
+# Kenaikan otomatis hanya ke atas; admin tetap bisa mengubah manual.
+# Peringatan otomatis: masih Kalung Merah setelah semester 2.
+
+PHASE_ORDER = ('MKDU', 'red', 'yellow', 'green')
+PHASE_LABEL = {'MKDU': 'MKDU', 'red': 'Kalung Merah', 'yellow': 'Kalung Kuning', 'green': 'Kalung Hijau'}
+PHASE_RULES = {
+    'red': ('yellow', 'Ujian Organ I'),
+    'yellow': ('green', 'Ujian Organ II'),
+}
+RED_MAX_SEMESTER = 2
+
+
+def _norm_exam_name(name):
+    return ' '.join((name or '').split()).lower()
+
+
+def _exam_passed(user, exam_name):
+    """Lulus bila ujian kurikulum bernama sama sudah diverifikasi lulus, atau
+    ujian organ dengan nama yang sama dinyatakan lulus oleh penguji/admin."""
+    target = _norm_exam_name(exam_name)
+    return (any(_norm_exam_name(e.exam_name) == target and e.result == 'lulus' for e in user.exams)
+            or any(_norm_exam_name(o.nama_ujian) == target and o.hasil == 'lulus' for o in user.organ_exams))
+
+
+def phase_progress(user):
+    phase = user.phase or 'MKDU'
+    comps = [c for c in user.competency_logs if c.phase_category == phase]
+    done = sum(1 for c in comps if c.status == 'completed')
+    info = {
+        'phase': phase,
+        'label': PHASE_LABEL.get(phase, phase),
+        'next_phase': None,
+        'next_label': None,
+        'syarat': [],
+        'siap_naik': False,
+        'kompetensi_tahap_ini': {'total': len(comps), 'selesai': done},
+        'peringatan_otomatis': None,
+    }
+    if phase == 'MKDU':
+        info['next_phase'] = 'red'
+        info['next_label'] = PHASE_LABEL['red']
+        info['syarat'] = [{'label': 'Menyelesaikan MKDU (dikonfirmasi admin)', 'selesai': False}]
+    elif phase in PHASE_RULES:
+        nxt, exam_name = PHASE_RULES[phase]
+        passed = _exam_passed(user, exam_name)
+        info['next_phase'] = nxt
+        info['next_label'] = PHASE_LABEL[nxt]
+        info['syarat'] = [{'label': f'Lulus {exam_name}', 'selesai': passed}]
+        info['siap_naik'] = passed
+    if phase == 'red' and (user.current_semester or 1) > RED_MAX_SEMESTER:
+        info['peringatan_otomatis'] = (
+            f'Masih Kalung Merah di semester {user.current_semester}. '
+            f'Target naik ke Kalung Kuning maksimal semester {RED_MAX_SEMESTER}.'
+        )
+    return info
+
+
+# ── Notifikasi ───────────────────────────────────────────────────────────────
+
+def notify(user_id, title, message, ntype='info', ref_type=None, ref_id=None):
+    """user_id None = untuk admin. Dipanggil di dalam transaksi pemanggil."""
+    db.session.add(AdminNotification(
+        target_user_id=user_id, title=title[:200], message=message or '-',
+        type=ntype, ref_type=ref_type, ref_id=ref_id,
+    ))
+
+
+def notify_pembimbing(ppds, title, message, ntype, ref_type=None, ref_id=None):
+    for uid in {ppds.pembimbing_1_id, ppds.pembimbing_2_id} - {None}:
+        notify(uid, title, message, ntype, ref_type, ref_id)
+
+
+def recompute_phase(user):
+    """Naikkan kalung bila syaratnya sudah terpenuhi. True bila berubah."""
+    if user.role != 'ppds':
+        return False
+    changed = False
+    while (user.phase or 'MKDU') in PHASE_RULES:
+        current = user.phase
+        nxt, exam_name = PHASE_RULES[current]
+        if not _exam_passed(user, exam_name):
+            break
+        # UPDATE bersyarat: bila request lain sudah menaikkan lebih dulu, baris
+        # tidak berubah dan notifikasi tidak dikirim dua kali.
+        updated = User.query.filter_by(id=user.id, phase=current).update(
+            {'phase': nxt, 'phase_updated_at': utcnow()}, synchronize_session=False)
+        db.session.refresh(user)
+        if not updated:
+            break
+        changed = True
+        notify(None, f'{user.full_name} naik ke {PHASE_LABEL[nxt]}',
+               f'Otomatis setelah lulus {exam_name}.', 'kalung', 'user', user.id)
+        notify(user.id, f'Selamat! Anda naik ke {PHASE_LABEL[nxt]}',
+               f'Otomatis setelah lulus {exam_name}.', 'kalung', 'user', user.id)
+    return changed
 
 
 # ── Inline Curriculum Assignment (no dynamic import needed) ──────────────────
@@ -703,9 +827,9 @@ def assign_standard_curriculum(user_id):
         ))
 
     rotations = [
-        ('RS Universitas Airlangga (RSUA)', 'Departemen Patologi Anatomi', 'Surabaya', 'Prof. Dr. Soemarsono, Sp.PA(K)'),
-        ('RSUD Dr. Soetomo', 'Patologi Anatomi', 'Surabaya', 'Dr. Ratna Kusuma, Sp.PA'),
-        ('RSPAL Dr. Ramelan', 'Lab Patologi', 'Surabaya', 'Dr. Adi Purnomo, Sp.PA'),
+        ('RS Universitas Airlangga (RSUA)', 'Departemen Patologi Anatomi', 'Surabaya', None),
+        ('RSUD Dr. Soetomo', 'Patologi Anatomi', 'Surabaya', None),
+        ('RSPAL Dr. Ramelan', 'Lab Patologi', 'Surabaya', None),
         ('RSUD Haji Surabaya', 'Patologi Anatomi', 'Surabaya', None),
     ]
     for hname, dept, city, sup in rotations:
@@ -825,7 +949,13 @@ def login():
 @app.route('/me', methods=['GET'])
 @auth_required
 def me():
-    return jsonify(user_dict(request.user))
+    # Kenaikan kalung hanya terjadi saat ada ujian yang dinyatakan lulus
+    # (verifikasi admin / hasil penguji), tidak saat membuka profil, supaya
+    # penurunan manual oleh admin tidak tertimpa.
+    user = request.user
+    d = user_dict(user)
+    d['kalung'] = phase_progress(user)
+    return jsonify(d)
 
 
 # ── Competencies ──────────────────────────────────────────────────────────────
@@ -839,6 +969,7 @@ def comp_dict(c):
         'status': c.status,
         'evidence_url': c.evidence_url,
         'notes': c.notes,
+        'alasan_tolak': c.alasan_tolak,
         'completed_at': c.completed_at.isoformat() if c.completed_at else None,
     }
 
@@ -871,6 +1002,8 @@ def update_competency(cid):
     if 'status' in data:
         comp.status = _user_progress_status(data['status'], USER_SETTABLE_PROGRESS)
         comp.completed_at = None
+        if comp.status == 'pending_verification':
+            comp.alasan_tolak = None
     apply_fields(comp, data, {'evidence_url': clean_url, 'notes': txt(5000)})
     db.session.commit()
     return jsonify(comp_dict(comp))
@@ -889,6 +1022,7 @@ def exam_dict(e):
         'evidence_url': e.evidence_url,
         'score': e.score,
         'notes': e.notes,
+        'alasan_tolak': e.alasan_tolak,
     }
 
 
@@ -908,6 +1042,8 @@ def update_exam(eid):
     _ensure_not_verified(exam.result in FINAL_EXAM_RESULT)
     if 'result' in data:
         exam.result = _user_progress_status(data['result'], USER_SETTABLE_EXAM_RESULT)
+        if exam.result == 'pending_verification':
+            exam.alasan_tolak = None
     # Nilai (score) hanya boleh diisi admin.
     apply_fields(exam, data, {
         'evidence_url': clean_url,
@@ -933,6 +1069,7 @@ def task_dict(t):
         'document_proof_url': t.document_proof_url,
         'link_url': t.link_url,
         'notes': t.notes,
+        'alasan_tolak': t.alasan_tolak,
     }
 
 
@@ -952,6 +1089,8 @@ def update_academic_task(tid):
     _ensure_not_verified(bool(task.is_completed) or task.status in FINAL_PROGRESS)
     if 'status' in data:
         task.status = _user_progress_status(data['status'], USER_SETTABLE_PROGRESS)
+        if task.status == 'pending_verification':
+            task.alasan_tolak = None
     # is_completed, link_url & description hanya bisa diubah admin.
     apply_fields(task, data, {'document_proof_url': clean_url, 'notes': txt(5000)})
     db.session.commit()
@@ -1160,6 +1299,12 @@ def delete_user_by_admin(uid):
         raise ApiError('Tidak bisa menghapus akun sendiri')
     # Lepaskan referensi "disetujui oleh" agar user penilai/admin bisa dihapus.
     JournalReadingSubmission.query.filter_by(approved_by=user.id).update({'approved_by': None})
+    # Lepaskan penugasan sebagai dosen wali / pembimbing / penguji.
+    for field in PERAN_PEMBIMBING:
+        User.query.filter(getattr(User, f'{field}_id') == user.id).update(
+            {f'{field}_id': None}, synchronize_session=False)
+    OrganExam.query.filter_by(penguji_id=user.id).update({'penguji_id': None}, synchronize_session=False)
+    Penilaian.query.filter_by(penilai_id=user.id).update({'penilai_id': None}, synchronize_session=False)
     db.session.delete(user)  # data milik user ikut terhapus (cascade)
     db.session.commit()
     return jsonify({'deleted': uid})
@@ -1190,24 +1335,44 @@ def get_pending_verifications():
 def verify_item(type_category, item_id):
     data = get_json()
     action = data.get('action', 'approve')
-    if action not in ('approve', 'reject'):
-        raise ApiError('action harus approve atau reject')
+    # approve = bukti diterima; reject = bukti ditolak (PPDS bisa kirim ulang);
+    # fail (khusus ujian) = dinyatakan tidak lulus.
+    if action not in ('approve', 'reject', 'fail'):
+        raise ApiError('action harus approve, reject, atau fail')
+    if action == 'fail' and type_category != 'exam':
+        raise ApiError('action fail hanya untuk ujian')
     approve = action == 'approve'
+    alasan = (clean_text(data.get('alasan'), 'alasan', 2000) or '').strip() or None
 
     if type_category == 'academic':
         item = get_or_404(AcademicTask, item_id, 'Not found')
         item.status = 'completed' if approve else 'not_started'
         item.is_completed = approve
+        nama = item.title
     elif type_category == 'exam':
         item = get_or_404(Exam, item_id, 'Not found')
-        item.result = 'lulus' if approve else 'tidak_lulus'
+        item.result = {'approve': 'lulus', 'reject': 'terjadwal', 'fail': 'tidak_lulus'}[action]
+        if 'score' in data:
+            item.score = parse_float(data['score'], 'score')
+        nama = item.exam_name
+        db.session.flush()
+        recompute_phase(item.user)
     elif type_category == 'competency':
         item = get_or_404(CompetencyLog, item_id, 'Not found')
         item.status = 'completed' if approve else 'not_started'
         item.completed_at = utcnow() if approve else None
+        nama = item.competency_name
     else:
         raise ApiError('Invalid category')
 
+    item.alasan_tolak = None if approve else alasan
+    if approve:
+        notify(item.user_id, f'Disetujui: {nama}', 'Bukti Anda sudah diverifikasi admin.', 'verifikasi', type_category, item_id)
+    elif action == 'fail':
+        notify(item.user_id, f'Hasil ujian: {nama} — tidak lulus', alasan or 'Silakan hubungi admin.', 'verifikasi', type_category, item_id)
+    else:
+        notify(item.user_id, f'Perlu diperbaiki: {nama}', alasan or 'Bukti belum dapat diterima. Silakan kirim ulang.',
+               'verifikasi', type_category, item_id)
     db.session.commit()
     return jsonify({'success': True, 'id': item_id, 'type_category': type_category})
 
@@ -1215,8 +1380,10 @@ def verify_item(type_category, item_id):
 @app.route('/admin/progress/<int:uid>', methods=['GET'])
 @admin_required
 def get_user_progress(uid):
-    user = get_or_404(User, uid, 'User tidak ditemukan')
+    return get_user_progress_payload(get_or_404(User, uid, 'User tidak ditemukan'))
 
+
+def get_user_progress_payload(user):
     competencies = user.competency_logs
     exams = user.exams
     tasks = user.academic_tasks
@@ -1261,6 +1428,16 @@ def get_user_progress(uid):
             'completed': done_rot,
             'items': [rotation_dict(r) for r in rotations],
         },
+        'organ_exams': [organ_exam_dict(e) for e in user.organ_exams],
+        'penilaian': [penilaian_dict(n) for n in user.penilaian_diterima],
+        'journal_reading': {
+            'total': len(user.journal_readings),
+            'disetujui': sum(1 for j in user.journal_readings if j.status == 'approved'),
+            'selesai': sum(1 for j in user.journal_readings if j.status == 'approved' and j.bukti_submitted),
+            'items': [jr_dict(j) for j in user.journal_readings],
+        },
+        'penelitian': [pen_dict(p) for p in user.penelitians],
+        'kalung': phase_progress(user),
     })
 
 
@@ -1355,7 +1532,7 @@ def admin_add_rotation():
 
 TEXTBOOKS = [
     ('Classification of Tumor', 'https://tumourclassification.iarc.who.int/home'),
-    ('Pathologic Basic of Disease', 'https://shop.elsevier.com/books/robbins-cotran-and-kumar-pathologic-basis-of-disease/kumar/978-0-443-26452-'),
+    ('Pathologic Basic of Disease', 'https://www.elsevier.com/search-results?query=Robbins%20Cotran%20Pathologic%20Basis%20of%20Disease'),
     ('Basic Pathology', 'https://shop.elsevier.com/books/robbins-and-kumar-basic-pathology/kumar/978-0-323-79018-5'),
     ("Enzinger and Weiss's Soft Tissue Tumors", 'https://shop.elsevier.com/books/enzinger-and-weisss-soft-tissue-tumors/goldblum/978-0-323-61096-4'),
     ("Cibas and Ducatman's Cytology", 'https://shop.elsevier.com/books/cibas-and-ducatman-s-cytology/cibas/978-0-323-93434-3'),
@@ -1480,7 +1657,8 @@ def check_topic():
             exists = True
             message = 'Judul penelitian sudah pernah diajukan.'
     elif jenis in ('journal_reading', 'journal'):
-        if JournalReadingSubmission.query.filter(db.func.lower(JournalReadingSubmission.judul) == lowered).first():
+        if JournalReadingSubmission.query.filter(db.func.lower(JournalReadingSubmission.judul) == lowered,
+                                                 JournalReadingSubmission.status != 'rejected').first():
             exists = True
             message = 'Judul journal reading sudah pernah diajukan.'
     else:
@@ -1518,15 +1696,39 @@ def submit_journal_reading():
     )
     db.session.add(j)
     db.session.flush()
-    db.session.add(AdminNotification(
-        title='Pengajuan Journal Reading Baru',
-        message=f'{request.user.full_name} mengajukan: {j.judul}',
-        type='journal',
-        ref_id=j.id,
-        ref_type='journal',
-    ))
+    msg = f'{request.user.full_name} mengajukan: {j.judul}'
+    notify(None, 'Pengajuan Journal Reading Baru', msg, 'journal', 'journal', j.id)
+    notify_pembimbing(request.user, 'Journal Reading perlu direview', msg, 'journal', 'journal', j.id)
     db.session.commit()
     return jsonify(jr_dict(j)), 201
+
+
+@app.route('/journal-readings/<int:jid>', methods=['PATCH'])
+@auth_required
+def edit_journal_reading(jid):
+    """PPDS memperbaiki pengajuan yang masih menunggu atau ditolak. Pengajuan
+    yang ditolak otomatis diajukan ulang (status kembali 'pending')."""
+    j = JournalReadingSubmission.query.filter_by(id=jid, user_id=request.user.id).first()
+    if not j:
+        raise ApiError('Tidak ditemukan', 404)
+    if j.status not in ('pending', 'rejected'):
+        raise ApiError('Pengajuan yang sudah disetujui tidak bisa diubah', 409)
+    apply_fields(j, get_json(), {
+        'judul': _required_text(500),
+        'penulis': txt(300),
+        'nama_jurnal': txt(300),
+        'pembimbing': txt(200),
+        'penguji': txt(200),
+        'tanggal_presentasi': parse_dt,
+    })
+    if j.status == 'rejected':
+        j.status = 'pending'
+        j.catatan_admin = None
+        msg = f'{request.user.full_name} mengajukan ulang: {j.judul}'
+        notify(None, 'Journal Reading diajukan ulang', msg, 'journal', 'journal', j.id)
+        notify_pembimbing(request.user, 'Journal Reading diajukan ulang', msg, 'journal', 'journal', j.id)
+    db.session.commit()
+    return jsonify(jr_dict(j))
 
 
 @app.route('/journal-readings/<int:jid>/bukti', methods=['PATCH'])
@@ -1538,8 +1740,10 @@ def submit_bukti_journal(jid):
     if j.status != 'approved':
         raise ApiError('Hanya bisa upload bukti jika sudah diapprove')
     data = get_json()
-    if 'bukti_url' in data:
-        j.bukti_url = clean_url(data['bukti_url'], 'bukti_url')
+    bukti = clean_url(data.get('bukti_url'), 'bukti_url')
+    if not bukti:
+        raise ApiError('Link bukti wajib diisi')
+    j.bukti_url = bukti
     j.bukti_submitted = True
     db.session.commit()
     return jsonify(jr_dict(j))
@@ -1563,8 +1767,20 @@ def get_all_journal_readings():
 @admin_or_evaluator_required
 def admin_list_journal_readings():
     status_filter = arg('status', 32, 'pending')
-    items = JournalReadingSubmission.query.filter_by(status=status_filter).order_by(JournalReadingSubmission.created_at.desc()).all()
+    query = JournalReadingSubmission.query.filter_by(status=status_filter)
+    if request.user.role != 'admin':
+        # Penilai hanya melihat pengajuan dari PPDS bimbingannya.
+        query = query.filter(JournalReadingSubmission.user_id.in_([u.id for u in _bimbingan_query(request.user)]))
+    items = query.order_by(JournalReadingSubmission.created_at.desc()).all()
     return jsonify([jr_dict(j, include_user=True) for j in items])
+
+
+def _ensure_can_review(owner_id):
+    if request.user.role == 'admin':
+        return
+    owner = db.session.get(User, owner_id)
+    if owner is None or not _peran_saya(request.user, owner):
+        raise ApiError('Hanya pembimbing / dosen wali PPDS ini yang dapat mereview', 403)
 
 
 @app.route('/admin/journal-readings/<int:jid>/review', methods=['PATCH'])
@@ -1573,6 +1789,7 @@ def admin_review_journal(jid):
     j = get_or_404(JournalReadingSubmission, jid)
     if j.user_id == request.user.id:
         raise ApiError('Tidak bisa mereview pengajuan milik sendiri', 403)
+    _ensure_can_review(j.user_id)
     data = get_json()
     action = data.get('action')
     if action == 'approve':
@@ -1583,8 +1800,15 @@ def admin_review_journal(jid):
         j.status = 'rejected'
     else:
         raise ApiError('action harus approve atau reject')
-    if 'catatan_admin' in data:
-        j.catatan_admin = clean_text(data['catatan_admin'], 'catatan_admin', 5000)
+    catatan = (clean_text(data.get('catatan_admin'), 'catatan_admin', 5000) or '').strip()
+    if catatan:
+        j.catatan_admin = catatan
+    if action == 'approve':
+        notify(j.user_id, f'Journal Reading disetujui: {j.judul}',
+               catatan or 'Silakan unggah bukti presentasi setelah selesai.', 'journal', 'journal', j.id)
+    else:
+        notify(j.user_id, f'Journal Reading ditolak: {j.judul}',
+               catatan or 'Silakan perbaiki lalu ajukan ulang.', 'journal', 'journal', j.id)
     db.session.commit()
     return jsonify(jr_dict(j))
 
@@ -1694,17 +1918,18 @@ def add_penelitian():
         pembimbing_retrospektif=clean_text(data.get('pembimbing_retrospektif'), 'pembimbing_retrospektif', 200),
         target_semester=_semester(data.get('target_semester'), 'target_semester'),
         notes=clean_text(data.get('notes'), 'notes', 5000),
+        dokumen_proposal_url=clean_url(data.get('dokumen_proposal_url'), 'dokumen_proposal_url') or None,
         status='draft',
     )
+    # Dengan dokumen proposal, penelitian langsung diajukan ke penilai.
+    if p.dokumen_proposal_url:
+        p.status = 'submitted'
     db.session.add(p)
     db.session.flush()
-    db.session.add(AdminNotification(
-        title='Penelitian Baru Disubmit',
-        message=f'{request.user.full_name} menambahkan penelitian: {p.judul}',
-        type='penelitian',
-        ref_id=p.id,
-        ref_type='penelitian',
-    ))
+    msg = f'{request.user.full_name}: {p.judul}'
+    if p.status == 'submitted':
+        notify(None, 'Penelitian diajukan', msg, 'penelitian', 'penelitian', p.id)
+        notify_pembimbing(request.user, 'Penelitian perlu direview', msg, 'penelitian', 'penelitian', p.id)
     db.session.commit()
     return jsonify(pen_dict(p)), 201
 
@@ -1723,6 +1948,9 @@ def update_penelitian(pid):
         if not (p.status == 'draft' and data['status'] == 'submitted'):
             raise ApiError('Status penelitian hanya bisa diubah oleh admin / penilai', 403)
         p.status = 'submitted'
+        msg = f'{request.user.full_name}: {p.judul}'
+        notify(None, 'Penelitian diajukan', msg, 'penelitian', 'penelitian', p.id)
+        notify_pembimbing(request.user, 'Penelitian perlu direview', msg, 'penelitian', 'penelitian', p.id)
     if original_status in PENELITIAN_EDITABLE_STATUSES:
         apply_fields(p, data, PENELITIAN_IDENTITY_FIELDS)
     elif any(field in data for field in PENELITIAN_IDENTITY_FIELDS):
@@ -1731,13 +1959,9 @@ def update_penelitian(pid):
     apply_fields(p, data, PENELITIAN_USER_FIELDS)
     if p.status in ('revisi_1', 'revisi_2') and not was_waiting and penelitian_perlu_review(p):
         ronde = '1' if p.status == 'revisi_1' else '2'
-        db.session.add(AdminNotification(
-            title=f'Revisi {ronde} Penelitian Diunggah',
-            message=f'{request.user.full_name} mengunggah revisi {ronde}: {p.judul}',
-            type='penelitian',
-            ref_id=p.id,
-            ref_type='penelitian',
-        ))
+        msg = f'{request.user.full_name} mengunggah revisi {ronde}: {p.judul}'
+        notify(None, f'Revisi {ronde} Penelitian Diunggah', msg, 'penelitian', 'penelitian', p.id)
+        notify_pembimbing(request.user, f'Revisi {ronde} penelitian perlu direview', msg, 'penelitian', 'penelitian', p.id)
     db.session.commit()
     return jsonify(pen_dict(p))
 
@@ -1761,6 +1985,7 @@ def admin_update_penelitian_status(pid):
     p = get_or_404(Penelitian, pid)
     if p.user_id == request.user.id:
         raise ApiError('Tidak bisa mereview penelitian milik sendiri', 403)
+    _ensure_can_review(p.user_id)
     data = get_json()
     if 'status' in data:
         if data['status'] not in PENELITIAN_STATUSES:
@@ -1795,6 +2020,11 @@ def admin_update_penelitian_status(pid):
             p.catatan_revisi2 = catatan
         else:
             p.catatan_penilai = catatan
+    if 'status' in data:
+        label = {'approved': 'disetujui', 'rejected': 'ditolak', 'revisi_1': 'perlu Revisi 1',
+                 'revisi_2': 'perlu Revisi 2', 'published': 'dipublikasikan', 'submitted': 'diajukan',
+                 'draft': 'dikembalikan ke draft'}.get(p.status, p.status)
+        notify(p.user_id, f'Penelitian {label}: {p.judul}', catatan or '-', 'penelitian', 'penelitian', p.id)
     db.session.commit()
     return jsonify(pen_dict(p, include_user=True))
 
@@ -1965,6 +2195,7 @@ def organ_exam_dict(e):
         'nama_ujian': e.nama_ujian,
         'organ': e.organ,
         'penguji': e.penguji,
+        'penguji_id': e.penguji_id,
         'tanggal': e.tanggal.isoformat() if e.tanggal else None,
         'hasil': e.hasil,
         'nilai': e.nilai,
@@ -1986,6 +2217,7 @@ ORGAN_EXAM_FIELDS = {
     'nama_ujian': _required_text(200),
     'organ': txt(200),
     'penguji': txt(200),
+    'penguji_id': lambda v, f: _penilai_id(v, f),
     'hasil': lambda v, f: _choice(v, f, ORGAN_EXAM_RESULTS),
     'nilai': parse_float,
     'catatan': txt(5000),
@@ -2024,6 +2256,11 @@ def admin_add_organ_exam():
         catatan=clean_text(data.get('catatan'), 'catatan', 5000),
     )
     db.session.add(e)
+    db.session.flush()
+    _apply_penguji(e, data)
+    notify(e.user_id, f'Jadwal ujian baru: {e.nama_ujian}', e.organ or '-', 'ujian', 'organ_exam', e.id)
+    if e.hasil == 'lulus':
+        recompute_phase(e.user)
     db.session.commit()
     return jsonify(organ_exam_dict(e)), 201
 
@@ -2032,7 +2269,224 @@ def admin_add_organ_exam():
 @admin_required
 def admin_update_organ_exam(eid):
     e = get_or_404(OrganExam, eid)
-    apply_fields(e, get_json(), ORGAN_EXAM_FIELDS)
+    data = get_json()
+    apply_fields(e, data, {k: v for k, v in ORGAN_EXAM_FIELDS.items() if k != 'penguji_id'})
+    _apply_penguji(e, data)
+    db.session.flush()
+    if e.hasil == 'lulus':
+        recompute_phase(e.user)
+    db.session.commit()
+    return jsonify(organ_exam_dict(e))
+
+
+def _apply_penguji(exam, data):
+    if 'penguji_id' in data:
+        before = exam.penguji_id
+        exam.penguji_id = _penilai_id(data['penguji_id'], 'penguji_id')
+        if exam.penguji_id is not None:
+            exam.penguji = db.session.get(User, exam.penguji_id).full_name
+            if exam.penguji_id != before:
+                ppds = db.session.get(User, exam.user_id)
+                notify(exam.penguji_id, f'Anda menjadi penguji {exam.nama_ujian}',
+                       f'PPDS: {ppds.full_name if ppds else "-"}', 'ujian', 'organ_exam', exam.id)
+        elif 'penguji' not in data:
+            exam.penguji = None
+
+
+# ── Penugasan pembimbing & penilaian ──────────────────────────────────────────
+#
+# Admin menugaskan akun penilai sebagai dosen wali / pembimbing per PPDS dan
+# sebagai penguji per ujian organ. Penilai lalu melihat PPDS bimbingannya,
+# memantau progresnya, dan memberi nilai 0-100 + catatan per semester. Penguji
+# mengisi hasil ujian organ yang ia uji.
+
+PERAN_PEMBIMBING = ('dosen_wali', 'pembimbing_1', 'pembimbing_2', 'pembimbing_retrospektif')
+PERAN_LABEL = {
+    'dosen_wali': 'Dosen Wali',
+    'pembimbing_1': 'Pembimbing 1',
+    'pembimbing_2': 'Pembimbing 2',
+    'pembimbing_retrospektif': 'Pembimbing Retrospektif',
+}
+
+
+def _penilai_id(value, field):
+    if value is None or value == '':
+        return None
+    uid = parse_int(value, field, minimum=1)
+    user = db.session.get(User, uid)
+    if user is None or user.role != 'penilai':
+        raise ApiError(f'{field} harus akun dengan role penilai')
+    return uid
+
+
+def _assign_pembimbing(ppds, data):
+    for peran in PERAN_PEMBIMBING:
+        key = f'{peran}_id'
+        if key not in data:
+            continue
+        penilai_id = _penilai_id(data[key], key)
+        setattr(ppds, key, penilai_id)
+        if penilai_id is not None:
+            setattr(ppds, peran, db.session.get(User, penilai_id).full_name)
+        elif peran not in data:
+            setattr(ppds, peran, None)
+
+
+def _peran_saya(penilai, ppds):
+    return [peran for peran in PERAN_PEMBIMBING if getattr(ppds, f'{peran}_id') == penilai.id]
+
+
+def penilaian_dict(n):
+    return {
+        'id': n.id,
+        'ppds_id': n.ppds_id,
+        'penilai_id': n.penilai_id,
+        'penilai_nama': n.penilai_nama,
+        'peran': n.peran,
+        'peran_label': PERAN_LABEL.get(n.peran, n.peran),
+        'semester': n.semester,
+        'nilai': n.nilai,
+        'catatan': n.catatan,
+        'created_at': n.created_at.isoformat() if n.created_at else None,
+        'updated_at': n.updated_at.isoformat() if n.updated_at else None,
+    }
+
+
+def _nilai_0_100(value, field):
+    number = parse_float(value, field)
+    if number is None:
+        raise ApiError('Nilai wajib diisi')
+    if number < 0 or number > 100:
+        raise ApiError('Nilai harus di antara 0 dan 100')
+    return number
+
+
+@app.route('/admin/penilai', methods=['GET'])
+@admin_required
+def admin_list_penilai():
+    users = User.query.filter_by(role='penilai').order_by(User.full_name).all()
+    return jsonify([{'id': u.id, 'full_name': u.full_name, 'email': u.email} for u in users])
+
+
+def _bimbingan_query(penilai):
+    conditions = [getattr(User, f'{peran}_id') == penilai.id for peran in PERAN_PEMBIMBING]
+    return User.query.filter(User.role == 'ppds', db.or_(*conditions)).order_by(User.full_name)
+
+
+@app.route('/penilai/bimbingan', methods=['GET'])
+@admin_or_evaluator_required
+def penilai_bimbingan():
+    me = request.user
+    result = []
+    for ppds in _bimbingan_query(me).all():
+        d = user_dict(ppds)
+        d['peran_saya'] = [{'peran': p, 'label': PERAN_LABEL[p]} for p in _peran_saya(me, ppds)]
+        d['penilaian_saya'] = [penilaian_dict(n) for n in Penilaian.query.filter_by(
+            ppds_id=ppds.id, penilai_id=me.id).order_by(Penilaian.semester.desc()).all()]
+        d['progres_kalung'] = phase_progress(ppds)
+        result.append(d)
+    return jsonify(result)
+
+
+def _ppds_for_penilai(uid):
+    ppds = get_or_404(User, uid, 'PPDS tidak ditemukan')
+    if ppds.role != 'ppds':
+        raise ApiError('PPDS tidak ditemukan', 404)
+    if request.user.role != 'admin' and not _peran_saya(request.user, ppds):
+        raise ApiError('PPDS ini bukan bimbingan Anda', 403)
+    return ppds
+
+
+@app.route('/penilai/bimbingan/<int:uid>/progress', methods=['GET'])
+@admin_or_evaluator_required
+def penilai_bimbingan_progress(uid):
+    ppds = _ppds_for_penilai(uid)
+    return get_user_progress_payload(ppds)
+
+
+@app.route('/penilaian', methods=['POST'])
+@admin_or_evaluator_required
+def beri_penilaian():
+    data = get_json()
+    ppds_id = parse_int(data.get('ppds_id'), 'ppds_id', minimum=1, allow_none=False)
+    ppds = _ppds_for_penilai(ppds_id)
+    peran = data.get('peran')
+    if peran not in PERAN_PEMBIMBING:
+        raise ApiError('peran tidak valid')
+    if getattr(ppds, f'{peran}_id') != request.user.id:
+        raise ApiError(f'Anda bukan {PERAN_LABEL[peran]} PPDS ini', 403)
+    semester = _semester(data.get('semester'), 'semester') or ppds.current_semester or 1
+    nilai = _nilai_0_100(data.get('nilai'), 'nilai')
+    catatan = clean_text(data.get('catatan'), 'catatan', 5000)
+
+    n = Penilaian.query.filter_by(ppds_id=ppds.id, penilai_id=request.user.id,
+                                  peran=peran, semester=semester).first()
+    created = n is None
+    if created:
+        n = Penilaian(ppds_id=ppds.id, penilai_id=request.user.id, peran=peran, semester=semester)
+        db.session.add(n)
+    n.penilai_nama = request.user.full_name
+    n.nilai = nilai
+    n.catatan = catatan
+    try:
+        db.session.flush()
+    except IntegrityError:
+        # Klik ganda: baris yang sama baru saja dibuat request lain -> perbarui saja.
+        db.session.rollback()
+        n = Penilaian.query.filter_by(ppds_id=ppds.id, penilai_id=request.user.id,
+                                      peran=peran, semester=semester).first()
+        n.penilai_nama, n.nilai, n.catatan, created = request.user.full_name, nilai, catatan, False
+    notify(ppds.id, f'Penilaian baru dari {PERAN_LABEL[peran]}',
+           f'{request.user.full_name} memberi nilai {nilai:g} untuk semester {semester}.', 'penilaian', 'penilaian', ppds.id)
+    db.session.commit()
+    return jsonify(penilaian_dict(n)), 201 if created else 200
+
+
+@app.route('/me/penilaian', methods=['GET'])
+@auth_required
+def penilaian_saya():
+    items = Penilaian.query.filter_by(ppds_id=request.user.id).order_by(
+        Penilaian.semester.desc(), Penilaian.peran).all()
+    return jsonify([penilaian_dict(n) for n in items])
+
+
+@app.route('/admin/penilaian', methods=['GET'])
+@admin_required
+def admin_list_penilaian():
+    ppds_id = parse_int(request.args.get('ppds_id'), 'ppds_id', minimum=1, allow_none=False)
+    items = Penilaian.query.filter_by(ppds_id=ppds_id).order_by(
+        Penilaian.semester.desc(), Penilaian.peran).all()
+    return jsonify([penilaian_dict(n) for n in items])
+
+
+@app.route('/penilai/ujian-organ', methods=['GET'])
+@admin_or_evaluator_required
+def penguji_list_ujian():
+    items = OrganExam.query.filter_by(penguji_id=request.user.id).order_by(OrganExam.tanggal.desc()).all()
+    result = []
+    for e in items:
+        d = organ_exam_dict(e)
+        d['ppds_nama'] = e.user.full_name if e.user else '-'
+        d['ppds_nim'] = e.user.nim if e.user else '-'
+        result.append(d)
+    return jsonify(result)
+
+
+@app.route('/penilai/ujian-organ/<int:eid>', methods=['PATCH'])
+@admin_or_evaluator_required
+def penguji_isi_hasil(eid):
+    e = get_or_404(OrganExam, eid)
+    if request.user.role != 'admin' and e.penguji_id != request.user.id:
+        raise ApiError('Anda bukan penguji ujian ini', 403)
+    before = e.hasil
+    apply_fields(e, get_json(), {k: ORGAN_EXAM_FIELDS[k] for k in ('hasil', 'nilai', 'catatan', 'tanggal')})
+    if e.hasil != before and e.hasil in ('lulus', 'tidak_lulus'):
+        label = 'lulus' if e.hasil == 'lulus' else 'tidak lulus'
+        notify(e.user_id, f'Hasil {e.nama_ujian}: {label}', e.catatan or '-', 'ujian', 'organ_exam', e.id)
+        notify(None, f'Penguji mengisi hasil {e.nama_ujian}', f'{e.user.full_name}: {label}', 'ujian', 'organ_exam', e.id)
+    db.session.flush()
+    if e.hasil == 'lulus':
+        recompute_phase(e.user)
     db.session.commit()
     return jsonify(organ_exam_dict(e))
 
@@ -2108,7 +2562,7 @@ def admin_update_survey(sid):
 @admin_required
 def get_admin_notifications():
     unread_only = request.args.get('unread', 'false').lower() == 'true'
-    query = AdminNotification.query
+    query = AdminNotification.query.filter(AdminNotification.target_user_id.is_(None))
     if unread_only:
         query = query.filter_by(is_read=False)
     items = query.order_by(AdminNotification.created_at.desc()).limit(50).all()
@@ -2127,7 +2581,9 @@ def get_admin_notifications():
 @app.route('/admin/notifications/<int:nid>/read', methods=['PATCH'])
 @admin_required
 def mark_notification_read(nid):
-    n = get_or_404(AdminNotification, nid)
+    n = AdminNotification.query.filter(AdminNotification.id == nid, AdminNotification.target_user_id.is_(None)).first()
+    if n is None:
+        raise ApiError('Tidak ditemukan', 404)
     n.is_read = True
     db.session.commit()
     return jsonify({'status': 'ok'})
@@ -2136,8 +2592,55 @@ def mark_notification_read(nid):
 @app.route('/admin/notifications/read-all', methods=['PATCH'])
 @admin_required
 def mark_all_notifications_read():
-    AdminNotification.query.filter_by(is_read=False).update({'is_read': True})
+    AdminNotification.query.filter(AdminNotification.target_user_id.is_(None),
+                                   AdminNotification.is_read.is_(False)).update({'is_read': True}, synchronize_session=False)
     db.session.commit()
+    return jsonify({'status': 'ok'})
+
+
+def _my_notifications_query():
+    me = request.user
+    if me.role == 'admin':
+        return AdminNotification.query.filter(db.or_(AdminNotification.target_user_id.is_(None),
+                                                     AdminNotification.target_user_id == me.id))
+    return AdminNotification.query.filter(AdminNotification.target_user_id == me.id)
+
+
+def notif_dict(n):
+    return {
+        'id': n.id, 'title': n.title, 'message': n.message, 'type': n.type,
+        'ref_id': n.ref_id, 'ref_type': n.ref_type, 'is_read': n.is_read,
+        'created_at': n.created_at.isoformat() if n.created_at else None,
+    }
+
+
+@app.route('/notifications', methods=['GET'])
+@auth_required
+def my_notifications():
+    query = _my_notifications_query()
+    unread = query.filter(AdminNotification.is_read.is_(False)).count()
+    items = query.order_by(AdminNotification.created_at.desc()).limit(50).all()
+    return jsonify({'unread': unread, 'items': [notif_dict(n) for n in items]})
+
+
+@app.route('/notifications/<int:nid>/read', methods=['PATCH'])
+@auth_required
+def my_notification_read(nid):
+    n = _my_notifications_query().filter(AdminNotification.id == nid).first()
+    if n is None:
+        raise ApiError('Tidak ditemukan', 404)
+    n.is_read = True
+    db.session.commit()
+    return jsonify({'status': 'ok'})
+
+
+@app.route('/notifications/read-all', methods=['PATCH'])
+@auth_required
+def my_notifications_read_all():
+    ids = [n.id for n in _my_notifications_query().filter(AdminNotification.is_read.is_(False)).all()]
+    if ids:
+        AdminNotification.query.filter(AdminNotification.id.in_(ids)).update({'is_read': True}, synchronize_session=False)
+        db.session.commit()
     return jsonify({'status': 'ok'})
 
 
@@ -2157,7 +2660,11 @@ def update_profile():
 @admin_required
 def admin_set_warning(uid):
     user = get_or_404(User, uid, 'User tidak ditemukan')
+    was_active = bool(user.warning_active)
     apply_fields(user, get_json(), {k: ADMIN_PROFILE_FIELDS[k] for k in ('warning_active', 'warning_message')})
+    if user.warning_active and not was_active:
+        notify(user.id, 'Anda menerima Surat Peringatan (SP)', user.warning_message or 'Segera hubungi koordinator.',
+               'peringatan', 'user', user.id)
     db.session.commit()
     return jsonify(user_dict(user))
 
@@ -2166,7 +2673,9 @@ def admin_set_warning(uid):
 @admin_required
 def admin_update_user_profile(uid):
     user = get_or_404(User, uid, 'User tidak ditemukan')
-    apply_fields(user, get_json(), ADMIN_PROFILE_FIELDS)
+    data = get_json()
+    apply_fields(user, data, ADMIN_PROFILE_FIELDS)
+    _assign_pembimbing(user, data)
     db.session.commit()
     return jsonify(user_dict(user))
 

@@ -1,306 +1,300 @@
 import 'package:flutter/material.dart';
 import 'package:fp_pemrograman/colors.dart';
-import 'package:fp_pemrograman/service/api_service.dart';
-import 'package:url_launcher/url_launcher.dart';
+import 'package:fp_pemrograman/screens/ppds_modules/module_common.dart';
+import 'package:fp_pemrograman/utils/labels.dart';
+import 'package:fp_pemrograman/widgets/ui.dart';
 
+/// Catatan prestasi (lomba, penghargaan) PPDS.
 class PrestasiScreen extends StatefulWidget {
-  const PrestasiScreen({Key? key}) : super(key: key);
+  const PrestasiScreen({super.key});
   @override
   State<PrestasiScreen> createState() => _PrestasiScreenState();
 }
 
+const List<String> _kTingkat = ['Lokal', 'Regional', 'Nasional', 'Internasional'];
+const List<String> _kJuara = ['Juara 1', 'Juara 2', 'Juara 3', 'Harapan', 'Finalis', 'Peserta', 'Lainnya'];
+
 class _PrestasiScreenState extends State<PrestasiScreen> {
-  final ApiService _api = ApiService();
+  final ModuleApi _api = ModuleApi();
   List<dynamic> _items = [];
-  bool _isLoading = true;
+  bool _loading = true;
+  String? _error;
 
   @override
   void initState() {
     super.initState();
-    _loadData();
+    _load();
   }
 
-  Future<void> _loadData() async {
-    setState(() => _isLoading = true);
-    final items = await _api.getPrestasi();
+  Future<void> _load() async {
+    final data = await _api.list('/prestasi');
+    if (!mounted) return;
     setState(() {
-      _items = items;
-      _isLoading = false;
+      _loading = false;
+      _error = data == null ? _api.errorMessage : null;
+      if (data != null) _items = data;
     });
   }
 
-  void _openUrl(String url) async {
-    try {
-      await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Tidak dapat membuka link: $url')),
-        );
-      }
+  String _nama(Map<String, dynamic> item) =>
+      str(item['nama_lomba']).isNotEmpty ? str(item['nama_lomba']) : str(item['nama_prestasi']);
+
+  Future<void> _openForm([Map<String, dynamic>? existing]) async {
+    final msg = await Navigator.push<String>(
+        context, MaterialPageRoute(builder: (_) => _PrestasiFormPage(existing: existing)));
+    if (msg == null || !mounted) return;
+    showSnack(context, msg);
+    _load();
+  }
+
+  Future<void> _delete(Map<String, dynamic> item) async {
+    final yes = await confirmDialog(
+      context,
+      title: 'Hapus prestasi?',
+      message: '"${_nama(item)}" akan dihapus dari catatan prestasi Anda.',
+      confirmText: 'Hapus',
+      danger: true,
+    );
+    if (!yes || !mounted) return;
+    final ok = await _api.ok('DELETE', '/prestasi/${item['id']}');
+    if (!mounted) return;
+    if (ok) {
+      showSnack(context, 'Prestasi dihapus.');
+      _load();
+    } else {
+      showSnack(context, _api.errorMessage, error: true);
     }
   }
 
-  void _showAddDialog() {
-    final namaCtrl = TextEditingController();
-    final urlCtrl = TextEditingController();
-    DateTime? selectedDate;
-    String selectedTingkat = 'Lokal';
-    String selectedJuara = 'Juara 1';
-
-    showDialog(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDialogState) => AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: const Text('Tambah Prestasi',
-              style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold, fontSize: 18)),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                _buildTextField(namaCtrl, 'Nama Perlombaan/Kegiatan', Icons.emoji_events),
-                const SizedBox(height: 10),
-                DropdownButtonFormField<String>(
-                  value: selectedTingkat,
-                  decoration: InputDecoration(
-                    labelText: 'Tingkat',
-                    prefixIcon: const Icon(Icons.public, color: AppColors.primaryPurple),
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                    filled: true,
-                    fillColor: Colors.grey[50],
-                  ),
-                  items: ['Lokal', 'Nasional', 'Internasional'].map((t) => DropdownMenuItem(value: t, child: Text(t))).toList(),
-                  onChanged: (v) => setDialogState(() => selectedTingkat = v!),
-                ),
-                const SizedBox(height: 10),
-                DropdownButtonFormField<String>(
-                  value: selectedJuara,
-                  decoration: InputDecoration(
-                    labelText: 'Pencapaian/Juara',
-                    prefixIcon: const Icon(Icons.star, color: AppColors.primaryPurple),
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                    filled: true,
-                    fillColor: Colors.grey[50],
-                  ),
-                  items: ['Juara 1', 'Juara 2', 'Juara 3', 'Harapan', 'Lainnya'].map((t) => DropdownMenuItem(value: t, child: Text(t))).toList(),
-                  onChanged: (v) => setDialogState(() => selectedJuara = v!),
-                ),
-                const SizedBox(height: 10),
-                _buildTextField(urlCtrl, 'Link Bukti (Sertifikat)', Icons.link),
-                const SizedBox(height: 10),
-                ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: const Icon(Icons.date_range, color: AppColors.primaryPurple),
-                  title: Text(selectedDate == null ? 'Pilih Waktu Pelaksanaan' : selectedDate.toString().split(' ')[0]),
-                  onTap: () async {
-                    final picked = await showDatePicker(
-                      context: context,
-                      initialDate: DateTime.now(),
-                      firstDate: DateTime(2000),
-                      lastDate: DateTime.now(),
-                    );
-                    if (picked != null) {
-                      setDialogState(() => selectedDate = picked);
-                    }
-                  },
-                )
-              ],
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Prestasi', style: TextStyle(fontWeight: FontWeight.w700))),
+      floatingActionButton: _loading || _error != null
+          ? null
+          : FloatingActionButton.extended(
+              onPressed: () => _openForm(),
+              icon: const Icon(Icons.add),
+              label: const Text('Tambah', style: TextStyle(fontWeight: FontWeight.w700)),
             ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('Batal', style: TextStyle(color: Colors.grey)),
-            ),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.primaryPurple, foregroundColor: Colors.white),
-              onPressed: () async {
-                if (namaCtrl.text.isEmpty || selectedDate == null) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Mohon isi nama perlombaan dan tanggal!')),
-                  );
-                  return;
-                }
-                Navigator.pop(ctx);
-                final success = await _api.addPrestasi({
-                  'nama_lomba': namaCtrl.text,
-                  'waktu_pelaksanaan': selectedDate!.toIso8601String(),
-                  'tingkat': selectedTingkat,
-                  'juara_ke': selectedJuara,
-                  'sertifikat_url': urlCtrl.text,
-                });
-                if (success) {
-                  _loadData();
-                } else {
-                  if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Gagal menambahkan prestasi')),
-                    );
-                  }
-                }
-              },
-              child: const Text('Simpan'),
-            ),
+      body: moduleBody(
+        loading: _loading,
+        error: _error,
+        onRefresh: _load,
+        bottomPadding: 96,
+        builder: () => [
+          if (_items.isEmpty)
+            EmptyState(
+              icon: Icons.emoji_events_outlined,
+              title: 'Belum ada prestasi',
+              message: 'Catat lomba atau penghargaan yang Anda raih beserta sertifikatnya.',
+              action: ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12)),
+                onPressed: () => _openForm(),
+                icon: const Icon(Icons.add),
+                label: const Text('Tambah prestasi'),
+              ),
+            )
+          else ...[
+            SectionTitle('${_items.length} prestasi tercatat'),
+            ..._items.map((i) => _card(i as Map<String, dynamic>)),
           ],
-        ),
+        ],
       ),
     );
   }
 
-  Widget _buildTextField(TextEditingController ctrl, String label, IconData icon) {
-    return TextField(
-      controller: ctrl,
-      decoration: InputDecoration(
-        labelText: label,
-        prefixIcon: Icon(icon, color: AppColors.primaryPurple),
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-        filled: true,
-        fillColor: Colors.grey[50],
+  Widget _card(Map<String, dynamic> item) {
+    final tingkat = str(item['tingkat']);
+    final juara = str(item['juara_ke']);
+    return AppCard(
+      onTap: () => _openForm(item),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+                color: AppColors.warningOrange.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(12)),
+            child: const Icon(Icons.emoji_events, color: AppColors.warningOrange, size: 24),
+          ),
+          const SizedBox(width: 12),
+          Expanded(child: Text(_nama(item).isEmpty ? '-' : _nama(item), style: kCardTitle)),
+          _PrestasiMenu(onEdit: () => _openForm(item), onDelete: () => _delete(item)),
+        ]),
+        if (tingkat.isNotEmpty || juara.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          Wrap(spacing: 8, runSpacing: 6, children: [
+            if (juara.isNotEmpty) _chip(juara, AppColors.warningOrange, Icons.military_tech),
+            if (tingkat.isNotEmpty) _chip('Tingkat $tingkat', AppColors.infoBlue, Icons.public),
+          ]),
+        ],
+        const SizedBox(height: 4),
+        if (str(item['waktu_pelaksanaan']).isNotEmpty)
+          MetaRow(icon: Icons.event, label: 'Tanggal', value: formatTanggal(item['waktu_pelaksanaan']))
+        else if (item['tahun'] != null)
+          MetaRow(icon: Icons.event, label: 'Tahun', value: '${item['tahun']}'),
+        if (str(item['deskripsi']).isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Text(str(item['deskripsi']), style: kBody, maxLines: 4, overflow: TextOverflow.ellipsis),
+          ),
+        if (str(item['sertifikat_url']).isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: LinkButton(label: 'Lihat sertifikat', url: str(item['sertifikat_url'])),
+          )
+        else
+          const Padding(
+            padding: EdgeInsets.only(top: 6),
+            child: Text('Belum ada link sertifikat.', style: kCaption),
+          ),
+      ]),
+    );
+  }
+
+  Widget _chip(String text, Color color, IconData icon) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(color: color.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(20)),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        Icon(icon, size: 15, color: color),
+        const SizedBox(width: 4),
+        Text(text, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: color)),
+      ]),
+    );
+  }
+}
+
+class _PrestasiMenu extends StatelessWidget {
+  final VoidCallback onEdit;
+  final VoidCallback onDelete;
+  const _PrestasiMenu({required this.onEdit, required this.onDelete});
+
+  @override
+  Widget build(BuildContext context) {
+    return PopupMenuButton<String>(
+      tooltip: 'Pilihan',
+      icon: const Icon(Icons.more_vert, color: AppColors.textGrey),
+      onSelected: (v) => v == 'edit' ? onEdit() : onDelete(),
+      itemBuilder: (_) => const [
+        PopupMenuItem(
+            value: 'edit', child: ListTile(leading: Icon(Icons.edit), title: Text('Ubah'), dense: true)),
+        PopupMenuItem(
+          value: 'delete',
+          child: ListTile(
+              leading: Icon(Icons.delete_outline, color: AppColors.errorRed),
+              title: Text('Hapus', style: TextStyle(color: AppColors.errorRed)),
+              dense: true),
+        ),
+      ],
+    );
+  }
+}
+
+class _PrestasiFormPage extends StatefulWidget {
+  final Map<String, dynamic>? existing;
+  const _PrestasiFormPage({this.existing});
+
+  @override
+  State<_PrestasiFormPage> createState() => _PrestasiFormPageState();
+}
+
+class _PrestasiFormPageState extends State<_PrestasiFormPage> {
+  final ModuleApi _api = ModuleApi();
+  final _formKey = GlobalKey<FormState>();
+  late final TextEditingController _nama;
+  late final TextEditingController _sertifikat;
+  late final TextEditingController _deskripsi;
+  String? _tingkat;
+  String? _juara;
+  DateTime? _tanggal;
+  bool _saving = false;
+
+  Map<String, dynamic>? get _e => widget.existing;
+  bool get _isEdit => _e != null;
+
+  @override
+  void initState() {
+    super.initState();
+    _nama = TextEditingController(
+        text: str(_e?['nama_lomba']).isNotEmpty ? str(_e?['nama_lomba']) : str(_e?['nama_prestasi']));
+    _sertifikat = TextEditingController(text: str(_e?['sertifikat_url']));
+    _deskripsi = TextEditingController(text: str(_e?['deskripsi']));
+    _tingkat = str(_e?['tingkat']).isEmpty ? null : str(_e?['tingkat']);
+    _juara = str(_e?['juara_ke']).isEmpty ? null : str(_e?['juara_ke']);
+    _tanggal = parseDate(_e?['waktu_pelaksanaan']);
+  }
+
+  @override
+  void dispose() {
+    for (final c in [_nama, _sertifikat, _deskripsi]) {
+      c.dispose();
+    }
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    if (!_formKey.currentState!.validate()) return;
+    setState(() => _saving = true);
+    final data = {
+      'nama_lomba': _nama.text.trim(),
+      'waktu_pelaksanaan': _tanggal == null ? '' : isoDate(_tanggal!),
+      'tingkat': _tingkat ?? '',
+      'juara_ke': _juara ?? '',
+      'sertifikat_url': _sertifikat.text.trim(),
+      'deskripsi': _deskripsi.text.trim(),
+    };
+    final ok = _isEdit
+        ? await _api.ok('PATCH', '/prestasi/${_e!['id']}', body: data)
+        : await _api.ok('POST', '/prestasi', body: data);
+    if (!mounted) return;
+    setState(() => _saving = false);
+    if (!ok) {
+      showSnack(context, _api.errorMessage, error: true);
+      return;
+    }
+    Navigator.pop(context, _isEdit ? 'Perubahan prestasi tersimpan.' : 'Prestasi ditambahkan.');
+  }
+
+  Widget _dropdown(String label, IconData icon, List<String> base, String? value, ValueChanged<String?> onChanged) {
+    final options = [...base, if (value != null && !base.contains(value)) value];
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: DropdownButtonFormField<String>(
+        initialValue: value,
+        isExpanded: true,
+        decoration: InputDecoration(labelText: '$label *', prefixIcon: Icon(icon)),
+        items: options.map((o) => DropdownMenuItem(value: o, child: Text(o))).toList(),
+        onChanged: onChanged,
+        validator: (v) => v == null || v.isEmpty ? '$label wajib dipilih' : null,
       ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Prestasi', style: TextStyle(fontFamily: 'Poppins')),
-        backgroundColor: Colors.white,
-        foregroundColor: Colors.black,
-        elevation: 0,
-      ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator(color: AppColors.primaryPurple))
-          : _items.isEmpty
-              ? _buildEmptyState()
-              : RefreshIndicator(
-                  onRefresh: _loadData,
-                  child: ListView.builder(
-                    padding: const EdgeInsets.all(16),
-                    itemCount: _items.length,
-                    itemBuilder: (context, index) {
-                      final item = _items[index];
-                      return Card(
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                        elevation: 2,
-                        margin: const EdgeInsets.only(bottom: 12),
-                        child: Padding(
-                          padding: const EdgeInsets.all(16),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(item['nama_lomba'] ?? '',
-                                  style: const TextStyle(
-                                      fontFamily: 'Poppins',
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 16)),
-                              const SizedBox(height: 8),
-                              Row(
-                                children: [
-                                  const Icon(Icons.date_range, size: 16, color: Colors.grey),
-                                  const SizedBox(width: 4),
-                                  Text(item['waktu_pelaksanaan']?.toString().split('T')[0] ?? ''),
-                                ],
-                              ),
-                              const SizedBox(height: 8),
-                              Row(
-                                children: [
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                                    decoration: BoxDecoration(
-                                      color: Colors.blue.withOpacity(0.1),
-                                      borderRadius: BorderRadius.circular(20),
-                                    ),
-                                    child: Text(item['tingkat'] ?? '',
-                                        style: const TextStyle(
-                                            color: Colors.blue, fontWeight: FontWeight.bold)),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                                    decoration: BoxDecoration(
-                                      color: Colors.amber.withOpacity(0.2),
-                                      borderRadius: BorderRadius.circular(20),
-                                    ),
-                                    child: Text(item['juara_ke'] ?? '',
-                                        style: const TextStyle(
-                                            color: Colors.orange, fontWeight: FontWeight.bold)),
-                                  ),
-                                ],
-                              ),
-                              if (item['sertifikat_url'] != null && item['sertifikat_url'].toString().isNotEmpty) ...[
-                                const Divider(height: 24),
-                                TextButton.icon(
-                                  onPressed: () => _openUrl(item['sertifikat_url']),
-                                  icon: const Icon(Icons.military_tech),
-                                  label: const Text('Lihat Sertifikat'),
-                                )
-                              ]
-                            ],
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _showAddDialog,
-        backgroundColor: AppColors.primaryPurple,
-        icon: const Icon(Icons.add, color: Colors.white),
-        label: const Text('Tambah Data', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-      ),
-    );
-  }
-
-  Widget _buildEmptyState() {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 32),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.emoji_events, size: 80, color: Colors.grey[300]),
-            const SizedBox(height: 20),
-            Text(
-              'Belum ada riwayat prestasi.',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: Colors.grey[600],
-                fontSize: 16,
-                fontFamily: 'Poppins',
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Tambahkan prestasi pertamamu!',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: Colors.grey[400],
-                fontSize: 13,
-                fontFamily: 'Poppins',
-              ),
-            ),
-            const SizedBox(height: 24),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton.icon(
-                onPressed: _showAddDialog,
-                icon: const Icon(Icons.add),
-                label: const Text('Tambah Prestasi',
-                    style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold)),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.primaryPurple,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                ),
-              ),
-            ),
-          ],
+    return FormPageScaffold(
+      title: _isEdit ? 'Ubah Prestasi' : 'Tambah Prestasi',
+      formKey: _formKey,
+      saving: _saving,
+      onSubmit: _submit,
+      submitIcon: Icons.save_outlined,
+      submitLabel: _isEdit ? 'Simpan perubahan' : 'Simpan prestasi',
+      children: [
+        moduleField(_nama, 'Nama lomba / penghargaan', icon: Icons.emoji_events_outlined, required: true, maxLines: 2),
+        DateFormField(
+          label: 'Tanggal pelaksanaan',
+          initialValue: _tanggal,
+          required: true,
+          lastDate: DateTime(DateTime.now().year + 1, 12, 31),
+          onChanged: (d) => _tanggal = d,
         ),
-      ),
+        _dropdown('Tingkat', Icons.public, _kTingkat, _tingkat, (v) => setState(() => _tingkat = v)),
+        _dropdown('Pencapaian', Icons.military_tech_outlined, _kJuara, _juara, (v) => setState(() => _juara = v)),
+        moduleField(_deskripsi, 'Deskripsi singkat', icon: Icons.notes, maxLines: 4),
+        moduleLinkField(_sertifikat, 'Link sertifikat (opsional)',
+            helper: 'Sertifikat atau bukti penghargaan di Google Drive.'),
+      ],
     );
   }
 }

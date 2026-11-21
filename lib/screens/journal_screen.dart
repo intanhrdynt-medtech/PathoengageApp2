@@ -1,516 +1,437 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:fp_pemrograman/colors.dart';
-import 'package:fp_pemrograman/service/api_service.dart';
-import 'package:url_launcher/url_launcher.dart';
+import 'package:fp_pemrograman/screens/ppds_modules/module_common.dart';
+import 'package:fp_pemrograman/utils/labels.dart';
+import 'package:fp_pemrograman/widgets/ui.dart';
 
+/// Journal Reading: pengajuan topik → direview dosen pembimbing/penilai →
+/// presentasi → unggah bukti. Target: 5 journal selesai.
 class JournalScreen extends StatefulWidget {
-  const JournalScreen({Key? key}) : super(key: key);
+  const JournalScreen({super.key});
 
   @override
   State<JournalScreen> createState() => _JournalScreenState();
 }
 
-class _JournalScreenState extends State<JournalScreen> with SingleTickerProviderStateMixin {
-  final ApiService _api = ApiService();
-  List<dynamic> _myJournals = [];
-  List<dynamic> _allJournals = [];
-  bool _isLoading = true;
-  late TabController _tabController;
+const int _kTargetJournal = 5;
+
+bool _buktiDone(dynamic j) => j['bukti_submitted'] == true || str(j['bukti_url']).isNotEmpty;
+
+class _JournalScreenState extends State<JournalScreen> {
+  final ModuleApi _api = ModuleApi();
+
+  List<dynamic> _mine = [];
+  bool _loadingMine = true;
+  String? _errorMine;
+
+  List<dynamic> _all = [];
+  bool _loadingAll = true;
+  String? _errorAll;
+  final TextEditingController _searchCtrl = TextEditingController();
+  Timer? _debounce;
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
-    _tabController.addListener(() {
-      if (_tabController.indexIsChanging) setState(() {});
-    });
-    _loadData();
+    _loadMine();
+    _loadAll();
   }
 
   @override
   void dispose() {
-    _tabController.dispose();
+    _debounce?.cancel();
+    _searchCtrl.dispose();
     super.dispose();
   }
 
-  Future<void> _loadData() async {
-    setState(() => _isLoading = true);
-    final myJournals = await _api.getMyJournalReadings();
-    final allJournals = await _api.getAllJournalReadings('');
+  Future<void> _loadMine() async {
+    final data = await _api.list('/journal-readings');
+    if (!mounted) return;
     setState(() {
-      _myJournals = myJournals;
-      _allJournals = allJournals;
-      _isLoading = false;
+      _loadingMine = false;
+      _errorMine = data == null ? _api.errorMessage : null;
+      if (data != null) _mine = data;
     });
   }
 
-  void _openUrl(String url) async {
-    try {
-      await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Tidak bisa membuka link: ')),
-        );
-      }
+  Future<void> _loadAll() async {
+    final q = _searchCtrl.text.trim();
+    final data = await _api.list('/journal-readings/all?q=${Uri.encodeQueryComponent(q)}');
+    if (!mounted) return;
+    setState(() {
+      _loadingAll = false;
+      _errorAll = data == null ? _api.errorMessage : null;
+      if (data != null) _all = data;
+    });
+  }
+
+  void _onSearch(String _) {
+    setState(() {});
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 400), _loadAll);
+  }
+
+  Future<void> _openForm([Map<String, dynamic>? existing]) async {
+    final msg = await Navigator.push<String>(
+      context,
+      MaterialPageRoute(builder: (_) => _JournalFormPage(existing: existing)),
+    );
+    if (msg == null || !mounted) return;
+    showSnack(context, msg);
+    _loadMine();
+    _loadAll();
+  }
+
+  Future<void> _uploadBukti(Map<String, dynamic> j) async {
+    final replacing = _buktiDone(j);
+    final res = await showSubmitLinkDialog(
+      context,
+      title: replacing ? 'Ganti bukti presentasi' : 'Unggah bukti presentasi',
+      description: '${str(j['judul'])}\n\nUnggah bukti presentasi (mis. foto, daftar hadir, atau slide) '
+          'ke Google Drive, lalu tempel link-nya.',
+      linkLabel: 'Link bukti presentasi',
+      initialLink: str(j['bukti_url']),
+      submitText: replacing ? 'Simpan' : 'Unggah bukti',
+    );
+    if (res == null || !mounted) return;
+    final ok = await _api.ok('PATCH', '/journal-readings/${j['id']}/bukti', body: {'bukti_url': res['link']});
+    if (!mounted) return;
+    if (ok) {
+      showSnack(context, replacing ? 'Link bukti diperbarui.' : 'Bukti terunggah. Journal ini tercatat selesai.');
+      _loadMine();
+    } else {
+      showSnack(context, _api.errorMessage, error: true);
     }
   }
 
-  Color _statusColor(String? status) {
-    switch (status) {
-      case 'approved': return Colors.green;
-      case 'pending': return Colors.orange;
-      case 'rejected': return Colors.red;
-      default: return AppColors.textGrey;
-    }
+  @override
+  Widget build(BuildContext context) {
+    return DefaultTabController(
+      length: 2,
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('Journal Reading', style: TextStyle(fontWeight: FontWeight.w700)),
+          bottom: moduleTabBar(const ['Jurnal Saya', 'Semua PPDS']),
+        ),
+        body: TabBarView(children: [_buildMine(), _buildAll()]),
+      ),
+    );
   }
 
-  String _statusLabel(String? status) {
-    switch (status) {
-      case 'approved': return 'Approved ✓';
-      case 'pending': return 'Menunggu ACC';
-      case 'rejected': return 'Ditolak';
-      default: return 'Draft';
-    }
+  // ── Tab: Jurnal Saya ──────────────────────────────────────────────────────
+
+  Widget _buildMine() {
+    return moduleBody(
+      loading: _loadingMine,
+      error: _errorMine,
+      onRefresh: _loadMine,
+      builder: () {
+        final selesai = _mine.where((j) => j['status'] == 'approved' && _buktiDone(j)).length;
+        final perluBukti = _mine.where((j) => j['status'] == 'approved' && !_buktiDone(j)).length;
+        final menunggu = _mine.where((j) => j['status'] == 'pending').length;
+        final ditolak = _mine.where((j) => j['status'] == 'rejected').length;
+        final parts = <String>[
+          if (menunggu > 0) '$menunggu menunggu persetujuan',
+          if (perluBukti > 0) '$perluBukti perlu unggah bukti',
+          if (ditolak > 0) '$ditolak perlu diperbaiki',
+        ];
+        return [
+          ModuleProgressCard(
+            title: 'Journal Reading',
+            done: selesai,
+            total: _kTargetJournal,
+            caption: selesai >= _kTargetJournal
+                ? 'Target $_kTargetJournal journal sudah tercapai.'
+                : 'Selesai = disetujui penilai dan bukti presentasi sudah diunggah.'
+                    '${parts.isEmpty ? '' : '\n${parts.join(' · ')}'}',
+          ),
+          ElevatedButton.icon(
+            style: ElevatedButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+              textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+            ),
+            onPressed: () => _openForm(),
+            icon: const Icon(Icons.add),
+            label: const Text('Ajukan Journal'),
+          ),
+          const SizedBox(height: 16),
+          const SectionTitle('Pengajuan saya'),
+          if (_mine.isEmpty)
+            const EmptyState(
+              icon: Icons.article_outlined,
+              title: 'Belum ada pengajuan Journal Reading',
+              message: 'Ajukan judul journal yang akan Anda presentasikan. Pengajuan akan direview dosen pembimbing/penilai.',
+            )
+          else
+            ..._mine.map((j) => _myCard(j as Map<String, dynamic>)),
+        ];
+      },
+    );
   }
 
-  void _showAddDialog() {
-    final judulCtrl = TextEditingController();
-    final penulisCtrl = TextEditingController();
-    final jurnalCtrl = TextEditingController();
-    final pembimbingCtrl = TextEditingController();
-    bool isSubmitting = false;
+  Widget _myCard(Map<String, dynamic> j) {
+    final status = str(j['status']);
+    final bukti = _buktiDone(j);
+    final catatan = str(j['catatan_admin']);
 
-    showDialog(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDlg) => Dialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          child: SingleChildScrollView(
-            child: Padding(
-              padding: const EdgeInsets.all(24),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('Ajukan Topik Journal Reading',
-                      style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold, fontSize: 16)),
-                  const SizedBox(height: 16),
-                  
-                  TextField(
-                    controller: judulCtrl,
-                    decoration: const InputDecoration(labelText: 'Judul Jurnal / Topik', border: OutlineInputBorder()),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: penulisCtrl,
-                    decoration: const InputDecoration(labelText: 'Penulis (Opsional)', border: OutlineInputBorder()),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: jurnalCtrl,
-                    decoration: const InputDecoration(labelText: 'Nama Jurnal Sumber (Opsional)', border: OutlineInputBorder()),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: pembimbingCtrl,
-                    decoration: const InputDecoration(labelText: 'Pembimbing', border: OutlineInputBorder()),
-                  ),
-                  const SizedBox(height: 20),
+    Widget? action;
+    if (status == 'rejected') {
+      action = CardActionButton(label: 'Perbaiki & ajukan ulang', icon: Icons.refresh, onPressed: () => _openForm(j));
+    } else if (status == 'pending') {
+      action = CardActionButton(
+          label: 'Perbaiki pengajuan', icon: Icons.edit, outlined: true, onPressed: () => _openForm(j));
+    } else if (status == 'approved' && !bukti) {
+      action = CardActionButton(label: 'Unggah bukti', icon: Icons.upload, onPressed: () => _uploadBukti(j));
+    }
 
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton(
-                      onPressed: isSubmitting
-                          ? null
-                          : () async {
-                              if (judulCtrl.text.trim().isEmpty) {
-                                ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(content: Text('Judul wajib diisi')));
-                                return;
-                              }
-                              setDlg(() => isSubmitting = true);
-                              // Cek duplikasi topik
-                              final dupCheck = await _api.checkTopicDuplication(judulCtrl.text.trim(), 'journal');
-                              if (dupCheck['exists'] == true) {
-                                setDlg(() => isSubmitting = false);
-                                if (ctx.mounted) {
-                                  showDialog(
-                                    context: ctx,
-                                    builder: (c) => AlertDialog(
-                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                                      title: const Row(children: [
-                                        Icon(Icons.warning_amber_rounded, color: Colors.orange),
-                                        SizedBox(width: 8),
-                                        Text('Topik Duplikat', style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold)),
-                                      ]),
-                                      content: Text(dupCheck['message'] ?? 'Judul sudah pernah diajukan.'),
-                                      actions: [
-                                        TextButton(onPressed: () => Navigator.pop(c), child: const Text('Batal')),
-                                        ElevatedButton(
-                                          style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
-                                          onPressed: () async {
-                                            Navigator.pop(c);
-                                            setDlg(() => isSubmitting = true);
-                                            final success = await _api.submitJournalReading({
-                                              'judul': judulCtrl.text.trim(),
-                                              'penulis': penulisCtrl.text.trim(),
-                                              'nama_jurnal': jurnalCtrl.text.trim(),
-                                              'pembimbing': pembimbingCtrl.text.trim(),
-                                              'jenis': 'Journal Reading',
-                                            });
-                                            setDlg(() => isSubmitting = false);
-                                            if (mounted) Navigator.pop(ctx);
-                                            if (success && mounted) {
-                                              _loadData();
-                                              ScaffoldMessenger.of(context).showSnackBar(
-                                                  const SnackBar(content: Text('Berhasil diajukan, menunggu ACC admin.')));
-                                            } else if (mounted) {
-                                              ScaffoldMessenger.of(context).showSnackBar(
-                                                  const SnackBar(content: Text('Gagal mengajukan topik. Periksa koneksi/server.')));
-                                            }
-                                          },
-                                          child: const Text('Tetap Ajukan', style: TextStyle(color: Colors.white)),
-                                        ),
-                                      ],
-                                    ),
-                                  );
-                                }
-                                return;
-                              }
-                              final success = await _api.submitJournalReading({
-                                'judul': judulCtrl.text.trim(),
-                                'penulis': penulisCtrl.text.trim(),
-                                'nama_jurnal': jurnalCtrl.text.trim(),
-                                'pembimbing': pembimbingCtrl.text.trim(),
-                                'jenis': 'Journal Reading',
-                              });
-                              setDlg(() => isSubmitting = false);
-                              if (mounted) Navigator.pop(ctx);
-                              if (success) {
-                                _loadData();
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(content: Text('Berhasil diajukan, menunggu ACC admin.')));
-                              } else {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(content: Text('Gagal mengajukan topik. Periksa koneksi/server.')));
-                              }
-                            },
-                      child: isSubmitting 
-                          ? const CircularProgressIndicator(color: Colors.white)
-                          : const Text('Ajukan Topik', style: TextStyle(fontFamily: 'Poppins')),
-                    ),
-                  )
-                ],
+    return AppCard(
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(str(j['judul']).isEmpty ? '-' : str(j['judul']), style: kCardTitle),
+        const SizedBox(height: 8),
+        StatusChip(journalStatus(status, buktiSubmitted: bukti)),
+        const SizedBox(height: 4),
+        MetaRow(icon: Icons.people_outline, label: 'Penulis', value: str(j['penulis'])),
+        MetaRow(icon: Icons.menu_book_outlined, label: 'Jurnal', value: str(j['nama_jurnal'])),
+        MetaRow(icon: Icons.school_outlined, label: 'Pembimbing', value: str(j['pembimbing'])),
+        MetaRow(icon: Icons.record_voice_over_outlined, label: 'Penguji', value: str(j['penguji'])),
+        if (str(j['tanggal_presentasi']).isNotEmpty)
+          MetaRow(icon: Icons.event, label: 'Presentasi', value: formatTanggal(j['tanggal_presentasi'])),
+        if (str(j['created_at']).isNotEmpty)
+          MetaRow(
+              icon: Icons.schedule,
+              label: 'Diajukan',
+              value: formatTanggal(j['created_at'], serverTimestamp: true)),
+        if (catatan.isNotEmpty)
+          NoteBox(
+            title: status == 'rejected' ? 'Alasan penolakan dari penilai' : 'Catatan penilai',
+            text: catatan,
+            color: status == 'rejected' ? AppColors.errorRed : AppColors.infoBlue,
+            icon: status == 'rejected' ? Icons.error_outline : Icons.comment_outlined,
+          ),
+        if (status == 'pending')
+          const NoteBox(
+            title: 'Menunggu persetujuan',
+            text: 'Pengajuan sedang direview dosen pembimbing/penilai. Anda masih bisa memperbaikinya.',
+          ),
+        if (status == 'approved' && !bukti)
+          const NoteBox(
+            title: 'Langkah berikutnya',
+            text: 'Setelah presentasi, unggah link bukti agar journal ini tercatat selesai.',
+            color: AppColors.successGreen,
+            icon: Icons.upload_file,
+          ),
+        if (status == 'approved' && bukti)
+          Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: Wrap(spacing: 4, children: [
+              LinkButton(label: 'Lihat bukti presentasi', url: str(j['bukti_url'])),
+              TextButton.icon(
+                style: TextButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 8), visualDensity: VisualDensity.compact),
+                onPressed: () => _uploadBukti(j),
+                icon: const Icon(Icons.edit, size: 16),
+                label: const Text('Ganti link'),
               ),
-            ),
+            ]),
           ),
-        ),
-      ),
+        if (action != null) action,
+      ]),
     );
   }
 
-  void _showUploadBuktiDialog(Map<String, dynamic> journal) {
-    final buktiCtrl = TextEditingController(text: journal['bukti_url'] ?? '');
-    bool isSubmitting = false;
+  // ── Tab: Semua PPDS ───────────────────────────────────────────────────────
 
-    showDialog(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDlg) => Dialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text('Upload Bukti (Link)',
-                    style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold, fontSize: 16)),
-                const SizedBox(height: 16),
-                TextField(
-                  controller: buktiCtrl,
-                  decoration: const InputDecoration(
-                    hintText: 'https://...',
-                    labelText: 'URL Bukti Pelaksanaan',
-                    border: OutlineInputBorder()
-                  ),
-                ),
-                const SizedBox(height: 20),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: isSubmitting
-                        ? null
-                        : () async {
-                            setDlg(() => isSubmitting = true);
-                            final success = await _api.updateJournalReadingBukti(
-                                journal['id'], buktiCtrl.text.trim());
-                            setDlg(() => isSubmitting = false);
-                            if (mounted) Navigator.pop(ctx);
-                            if (success) {
-                              _loadData();
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(content: Text('Bukti berhasil diupload.')));
-                            }
-                          },
-                    child: isSubmitting 
-                        ? const CircularProgressIndicator(color: Colors.white)
-                        : const Text('Simpan', style: TextStyle(fontFamily: 'Poppins')),
-                  ),
-                )
-              ],
-            ),
-          ),
+  Widget _buildAll() {
+    return moduleBody(
+      loading: _loadingAll,
+      error: _errorAll,
+      onRefresh: _loadAll,
+      builder: () => [
+        ModuleSearchField(controller: _searchCtrl, hint: 'Cari judul journal...', onChanged: _onSearch),
+        const Padding(
+          padding: EdgeInsets.only(bottom: 12),
+          child: Text('Journal yang sudah disetujui. Cek daftar ini agar topik Anda tidak sama dengan PPDS lain.',
+              style: kCaption),
         ),
-      ),
-    );
-  }
-
-  static const int _targetJournal = 5;
-
-  Widget _buildProgressHeader() {
-    final selesai = _myJournals
-        .where((j) => j['status'] == 'approved' && j['bukti_submitted'] == true)
-        .length;
-    final disetujui = _myJournals.where((j) => j['status'] == 'approved').length;
-    final tercapai = selesai >= _targetJournal;
-    return Card(
-      margin: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-      color: tercapai ? Colors.green.shade50 : Colors.orange.shade50,
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Journal Reading selesai: $selesai / $_targetJournal',
-                style: TextStyle(
-                    fontFamily: 'Poppins',
-                    fontWeight: FontWeight.bold,
-                    color: tercapai ? Colors.green.shade800 : Colors.orange.shade900)),
-            const SizedBox(height: 8),
-            LinearProgressIndicator(
-              value: (selesai / _targetJournal).clamp(0, 1).toDouble(),
-              minHeight: 6,
-              backgroundColor: Colors.white,
-              color: tercapai ? Colors.green : Colors.orange,
-            ),
-            const SizedBox(height: 6),
-            Text(
-                tercapai
-                    ? 'Target minimal $_targetJournal journal sudah tercapai.'
-                    : 'Dihitung selesai bila sudah disetujui dan bukti sudah diupload. '
-                        'Disetujui: $disetujui.',
-                style: const TextStyle(fontSize: 11, color: Colors.black54)),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildMyJournals() {
-    return Column(
-      children: [
-        _buildProgressHeader(),
-        Expanded(child: _buildMyJournalList()),
+        if (_all.isEmpty)
+          EmptyState(
+            icon: Icons.search_off,
+            title: _searchCtrl.text.trim().isEmpty ? 'Belum ada journal yang disetujui' : 'Tidak ada judul yang cocok',
+          )
+        else
+          ..._all.map((j) => _publicCard(j as Map<String, dynamic>)),
       ],
     );
   }
 
-  Widget _buildMyJournalList() {
-    if (_myJournals.isEmpty) {
-      return const Center(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 32),
-          child: Text('Belum ada pengajuan Journal Reading',
-              textAlign: TextAlign.center,
-              style: TextStyle(fontFamily: 'Poppins', color: Colors.grey)),
-        ),
-      );
-    }
-    return ListView.builder(
-      padding: const EdgeInsets.all(16),
-      itemCount: _myJournals.length,
-      itemBuilder: (ctx, i) {
-        final j = _myJournals[i];
-        final status = j['status'];
-        final isApproved = status == 'approved';
-        return Card(
-          margin: const EdgeInsets.only(bottom: 12),
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Expanded(
-                      child: Text(j['judul'] ?? '', 
-                        style: const TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold, fontSize: 14)),
-                    ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: _statusColor(status).withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Text(_statusLabel(status),
-                          style: TextStyle(color: _statusColor(status), fontSize: 11, fontWeight: FontWeight.bold)),
-                    )
-                  ],
-                ),
-                if (j['pembimbing'] != null && j['pembimbing'].toString().isNotEmpty) ...[
-                  const SizedBox(height: 6),
-                  Text('Pembimbing: ${j['pembimbing']}', style: const TextStyle(fontSize: 12, color: Colors.grey)),
-                ],
-                if ((j['catatan_admin'] ?? '').toString().isNotEmpty) ...[
-                  const SizedBox(height: 8),
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(8),
-                    color: status == 'rejected' ? Colors.red.shade50 : Colors.blue.shade50,
-                    child: Text('Catatan penilai: ${j['catatan_admin']}',
-                        style: TextStyle(fontSize: 11, color: status == 'rejected' ? Colors.red.shade800 : Colors.blue.shade800)),
-                  ),
-                ],
-                if (isApproved) ...[
-                  const SizedBox(height: 12),
-                  const Divider(),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(j['bukti_submitted'] == true ? 'Bukti sudah diupload' : 'Belum upload bukti', 
-                          style: TextStyle(fontSize: 12, color: j['bukti_submitted'] == true ? Colors.green : Colors.orange)),
-                      TextButton(
-                        onPressed: () => _showUploadBuktiDialog(j),
-                        child: Text(j['bukti_submitted'] == true ? 'Edit Bukti' : 'Upload Bukti'),
-                      )
-                    ],
-                  )
-                ]
-              ],
-            ),
-          ),
-        );
-      },
+  Widget _publicCard(Map<String, dynamic> j) {
+    return AppCard(
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(str(j['judul']).isEmpty ? '-' : str(j['judul']), style: kCardTitle),
+        const SizedBox(height: 8),
+        StatusChip(journalStatus(str(j['status']).isEmpty ? 'approved' : str(j['status']), buktiSubmitted: _buktiDone(j))),
+        const SizedBox(height: 4),
+        MetaRow(icon: Icons.person_outline, label: 'PPDS', value: str(j['user_name'])),
+        MetaRow(icon: Icons.people_outline, label: 'Penulis', value: str(j['penulis'])),
+        MetaRow(icon: Icons.menu_book_outlined, label: 'Jurnal', value: str(j['nama_jurnal'])),
+        if (str(j['tanggal_presentasi']).isNotEmpty)
+          MetaRow(icon: Icons.event, label: 'Presentasi', value: formatTanggal(j['tanggal_presentasi'])),
+      ]),
     );
   }
+}
 
-  Widget _buildAllJournals() {
-    if (_allJournals.isEmpty) {
-      return const Center(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 32),
-          child: Text('Belum ada Journal Reading yang di-ACC',
-              textAlign: TextAlign.center,
-              style: TextStyle(fontFamily: 'Poppins', color: Colors.grey)),
-        ),
-      );
-    }
-    return ListView.builder(
-      padding: const EdgeInsets.all(16),
-      itemCount: _allJournals.length,
-      itemBuilder: (ctx, i) {
-        final j = _allJournals[i];
-        final status = j['status'] ?? 'approved';
-        return Card(
-          margin: const EdgeInsets.only(bottom: 12),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          child: Padding(
-            padding: const EdgeInsets.all(14),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        j['judul'] ?? '-',
-                        style: const TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold, fontSize: 13),
-                      ),
-                    ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                      decoration: BoxDecoration(
-                        color: _statusColor(status).withOpacity(0.12),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Text(
-                        _statusLabel(status),
-                        style: TextStyle(fontSize: 10, color: _statusColor(status), fontWeight: FontWeight.bold),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  'Oleh: ${j['user_name'] ?? j['penulis'] ?? '-'}',
-                  style: const TextStyle(fontFamily: 'Poppins', fontSize: 11, color: Colors.grey),
-                ),
-                if (j['nama_jurnal'] != null && j['nama_jurnal'].toString().isNotEmpty)
-                  Text(
-                    'Sumber: ${j['nama_jurnal']}',
-                    style: const TextStyle(fontFamily: 'Poppins', fontSize: 11, color: Colors.grey),
-                  ),
-                if (j['bukti_url'] != null && j['bukti_url'].toString().isNotEmpty)
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: TextButton.icon(
-                      onPressed: () => _openUrl(j['bukti_url']),
-                      icon: const Icon(Icons.link, size: 14),
-                      label: const Text('Bukti', style: TextStyle(fontSize: 11)),
-                    ),
-                  ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
+// ── Formulir pengajuan / perbaikan ──────────────────────────────────────────
+
+class _JournalFormPage extends StatefulWidget {
+  final Map<String, dynamic>? existing;
+  const _JournalFormPage({this.existing});
+
+  @override
+  State<_JournalFormPage> createState() => _JournalFormPageState();
+}
+
+class _JournalFormPageState extends State<_JournalFormPage> {
+  final ModuleApi _api = ModuleApi();
+  final _formKey = GlobalKey<FormState>();
+  late final TextEditingController _judul;
+  late final TextEditingController _penulis;
+  late final TextEditingController _jurnal;
+  late final TextEditingController _pembimbing;
+  late final TextEditingController _penguji;
+  DateTime? _tanggal;
+  bool _saving = false;
+
+  Map<String, dynamic>? get _e => widget.existing;
+  bool get _isEdit => _e != null;
+  bool get _isRejected => _e?['status'] == 'rejected';
+
+  @override
+  void initState() {
+    super.initState();
+    _judul = TextEditingController(text: str(_e?['judul']));
+    _penulis = TextEditingController(text: str(_e?['penulis']));
+    _jurnal = TextEditingController(text: str(_e?['nama_jurnal']));
+    _pembimbing = TextEditingController(text: str(_e?['pembimbing']));
+    _penguji = TextEditingController(text: str(_e?['penguji']));
+    _tanggal = parseDate(_e?['tanggal_presentasi']);
+    if (!_isEdit) _prefillPembimbing();
   }
 
+  Future<void> _prefillPembimbing() async {
+    final me = await _api.me();
+    if (!mounted || me == null) return;
+    if (_pembimbing.text.trim().isEmpty && str(me['pembimbing_1']).isNotEmpty) {
+      setState(() => _pembimbing.text = str(me['pembimbing_1']));
+    }
+  }
+
+  @override
+  void dispose() {
+    for (final c in [_judul, _penulis, _jurnal, _pembimbing, _penguji]) {
+      c.dispose();
+    }
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    if (!_formKey.currentState!.validate()) return;
+    final judul = _judul.text.trim();
+    setState(() => _saving = true);
+
+    // Cek judul yang sama (hanya bila judul baru / diubah).
+    final titleChanged = !_isEdit || judul.toLowerCase() != str(_e?['judul']).toLowerCase();
+    if (titleChanged) {
+      final dup = await _api.checkTopic(judul, 'journal');
+      if (!mounted) return;
+      if (dup['exists'] == true) {
+        final go = await confirmDialog(
+          context,
+          title: 'Judul sudah pernah diajukan',
+          message: '${str(dup['message']).isEmpty ? 'Judul ini sudah diajukan PPDS lain.' : str(dup['message'])}\n\n'
+              'Sebaiknya pilih journal lain. Tetap ajukan judul ini?',
+          confirmText: 'Tetap ajukan',
+        );
+        if (!mounted) return;
+        if (!go) {
+          setState(() => _saving = false);
+          return;
+        }
+      }
+    }
+
+    final data = <String, dynamic>{
+      'judul': judul,
+      'penulis': _penulis.text.trim(),
+      'nama_jurnal': _jurnal.text.trim(),
+      'pembimbing': _pembimbing.text.trim(),
+      'penguji': _penguji.text.trim(),
+      'tanggal_presentasi': _tanggal == null ? '' : isoDate(_tanggal!),
+    };
+    final ok = _isEdit
+        ? await _api.ok('PATCH', '/journal-readings/${_e!['id']}', body: data)
+        : await _api.ok('POST', '/journal-readings', body: {...data, 'jenis': 'Journal Reading'});
+    if (!mounted) return;
+    setState(() => _saving = false);
+    if (!ok) {
+      showSnack(context, _api.errorMessage, error: true);
+      return;
+    }
+    Navigator.pop(
+      context,
+      !_isEdit
+          ? 'Journal berhasil diajukan. Menunggu persetujuan penilai.'
+          : _isRejected
+              ? 'Perbaikan terkirim. Journal diajukan ulang ke penilai.'
+              : 'Perubahan pengajuan tersimpan.',
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.backgroundLightest,
-      appBar: AppBar(
-        title: const Text('Journal Reading', style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold)),
-        backgroundColor: AppColors.primaryPurple,
-        foregroundColor: Colors.white,
-        elevation: 0,
-        bottom: TabBar(
-          controller: _tabController,
-          labelColor: Colors.white,
-          unselectedLabelColor: Colors.white60,
-          indicatorColor: Colors.white,
-          tabs: const [
-            Tab(text: 'Jurnal Saya'),
-            Tab(text: 'Semua PPDS'),
-          ],
+    final catatan = str(_e?['catatan_admin']);
+    return FormPageScaffold(
+      title: !_isEdit
+          ? 'Ajukan Journal'
+          : _isRejected
+              ? 'Perbaiki & Ajukan Ulang'
+              : 'Perbaiki Pengajuan',
+      formKey: _formKey,
+      saving: _saving,
+      onSubmit: _submit,
+      submitLabel: !_isEdit
+          ? 'Ajukan ke penilai'
+          : _isRejected
+              ? 'Ajukan ulang'
+              : 'Simpan perubahan',
+      children: [
+        if (_isRejected && catatan.isNotEmpty)
+          NoteBox(
+              title: 'Alasan penolakan dari penilai',
+              text: catatan,
+              color: AppColors.errorRed,
+              icon: Icons.error_outline),
+        NoteBox(
+          title: 'Alur Journal Reading',
+          text: _isRejected
+              ? 'Setelah diperbaiki, pengajuan otomatis dikirim ulang ke dosen pembimbing/penilai.'
+              : '1. Ajukan judul journal.  2. Dosen pembimbing/penilai meninjau.  '
+                  '3. Setelah disetujui dan presentasi selesai, unggah bukti.',
         ),
-      ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : RefreshIndicator(
-              onRefresh: _loadData,
-              child: TabBarView(
-                controller: _tabController,
-                children: [
-                  _buildMyJournals(),
-                  _buildAllJournals(),
-                ],
-              ),
-            ),
-      floatingActionButton: _tabController.index == 0 
-          ? FloatingActionButton.extended(
-              onPressed: _showAddDialog,
-              icon: const Icon(Icons.add),
-              label: const Text('Ajukan Topik', style: TextStyle(fontFamily: 'Poppins')),
-              backgroundColor: AppColors.primaryPurple,
-              foregroundColor: Colors.white,
-            )
-          : null,
+        const SizedBox(height: 16),
+        moduleField(_judul, 'Judul artikel / journal', icon: Icons.title, required: true, maxLines: 3),
+        moduleField(_penulis, 'Penulis artikel', icon: Icons.people_outline, hint: 'mis. Smith J, et al.'),
+        moduleField(_jurnal, 'Nama jurnal sumber', icon: Icons.menu_book_outlined, hint: 'mis. Modern Pathology'),
+        moduleField(_pembimbing, 'Pembimbing', icon: Icons.school_outlined),
+        moduleField(_penguji, 'Penguji', icon: Icons.record_voice_over_outlined),
+        DateFormField(
+          label: 'Tanggal presentasi',
+          initialValue: _tanggal,
+          onChanged: (d) => _tanggal = d,
+        ),
+      ],
     );
   }
 }

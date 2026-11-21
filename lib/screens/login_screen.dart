@@ -1,12 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:fp_pemrograman/colors.dart';
-import 'package:fp_pemrograman/service/auth_service.dart';
-import 'package:fp_pemrograman/screens/register_screen.dart';
-import 'package:fp_pemrograman/screens/dashboard_screen.dart';
 import 'package:fp_pemrograman/screens/admin_dashboard_screen.dart';
+import 'package:fp_pemrograman/screens/dashboard_screen.dart';
 import 'package:fp_pemrograman/screens/evaluator_screen.dart';
-
-import 'dart:math';
+import 'package:fp_pemrograman/screens/register_screen.dart';
+import 'package:fp_pemrograman/service/auth_service.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -18,322 +16,258 @@ class LoginScreen extends StatefulWidget {
 class LoginScreenState extends State<LoginScreen> {
   final AuthService _auth = AuthService();
   final _formKey = GlobalKey<FormState>();
-  String email = '';
-  String password = '';
-  String error = '';
+  final _emailCtrl = TextEditingController();
+  final _passwordCtrl = TextEditingController();
+  String _error = '';
   bool _isLoading = false;
-  bool _isPasswordObscure = true;
+  bool _obscure = true;
 
-  void _tryLogin() async {
-    if (_formKey.currentState!.validate()) {
-      setState(() => _isLoading = true);
+  @override
+  void dispose() {
+    _emailCtrl.dispose();
+    _passwordCtrl.dispose();
+    super.dispose();
+  }
 
-      dynamic result = await _auth.signInWithEmailAndPassword(email, password);
-
-      if (!mounted) return;
-      if (result == null) {
-        setState(() {
-          error = 'Login Failed: Could not connect to API.';
-          _isLoading = false;
-        });
-      } else if (result['success'] == false) {
-          setState(() {
-          error = 'Login Failed: ${result['message'] ?? 'Could not sign in with those credentials.'}';
-          _isLoading = false;
-        });
-      } else {
-        if (result['role'] == 'admin') {
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(builder: (context) => const AdminDashboardScreen()),
-          );
-        } else if (result['role'] == 'penilai') {
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(builder: (context) => const EvaluatorScreen()),
-          );
-        } else {
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(builder: (context) => DashboardScreen()),
-          );
-        }
-      }
+  String _friendlyError(String? message) {
+    final m = (message ?? '').trim();
+    if (m.isEmpty) return 'Email atau kata sandi salah.';
+    if (m.startsWith('Error:') || m.contains('SocketException') || m.contains('ClientException')) {
+      return 'Tidak dapat terhubung ke server. Periksa koneksi internet lalu coba lagi.';
     }
+    return m;
+  }
+
+  Future<void> _tryLogin() async {
+    FocusScope.of(context).unfocus();
+    if (!_formKey.currentState!.validate()) return;
+    setState(() {
+      _isLoading = true;
+      _error = '';
+    });
+
+    final result = await _auth.signInWithEmailAndPassword(_emailCtrl.text.trim(), _passwordCtrl.text);
+    if (!mounted) return;
+
+    if (result == null || result['success'] == false) {
+      setState(() {
+        _error = _friendlyError(result?['message']?.toString());
+        _isLoading = false;
+      });
+      return;
+    }
+
+    final role = result['role'];
+    final Widget home = role == 'admin'
+        ? const AdminDashboardScreen()
+        : role == 'penilai'
+            ? const EvaluatorScreen()
+            : const DashboardScreen();
+    Navigator.of(context).pushAndRemoveUntil(MaterialPageRoute(builder: (_) => home), (_) => false);
   }
 
   @override
   Widget build(BuildContext context) {
-    final double designWidth = 1080.0;
-    final double designHeight = 1920.0;
-    final double screenWidth = MediaQuery.of(context).size.width;
-    final double screenHeight = MediaQuery.of(context).size.height;
-
-    final double scaleX = screenWidth / designWidth;
-    final double scaleY = screenHeight / designHeight;
-
-    double scaleW(double val) => val * scaleX;
-    double scaleH(double val) => val * scaleY;
-    double scaleFont(double val) => val * min(scaleX, scaleY);
-
-    return Scaffold(
-      extendBodyBehindAppBar: true,
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-      ),
-      body: _isLoading
-          ? Center(child: CircularProgressIndicator())
-          : Stack(
+    return AuthFrame(
+      title: 'Masuk',
+      subtitle: 'Masuk dengan email yang terdaftar di PathoEngage.',
+      child: Form(
+        key: _formKey,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            TextFormField(
+              controller: _emailCtrl,
+              keyboardType: TextInputType.emailAddress,
+              textInputAction: TextInputAction.next,
+              autofillHints: const [AutofillHints.email],
+              style: const TextStyle(fontSize: 15),
+              decoration: const InputDecoration(
+                labelText: 'Email',
+                hintText: 'nama@contoh.com',
+                prefixIcon: Icon(Icons.email_outlined, color: AppColors.accentRed),
+              ),
+              validator: (val) {
+                final v = (val ?? '').trim();
+                if (v.isEmpty) return 'Email wajib diisi';
+                if (!RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(v)) return 'Format email tidak valid';
+                return null;
+              },
+            ),
+            const SizedBox(height: 16),
+            TextFormField(
+              controller: _passwordCtrl,
+              obscureText: _obscure,
+              textInputAction: TextInputAction.done,
+              autofillHints: const [AutofillHints.password],
+              onFieldSubmitted: (_) => _isLoading ? null : _tryLogin(),
+              style: const TextStyle(fontSize: 15),
+              decoration: InputDecoration(
+                labelText: 'Kata sandi',
+                prefixIcon: const Icon(Icons.lock_outline, color: AppColors.accentRed),
+                suffixIcon: IconButton(
+                  tooltip: _obscure ? 'Tampilkan kata sandi' : 'Sembunyikan kata sandi',
+                  icon: Icon(_obscure ? Icons.visibility_off : Icons.visibility, color: AppColors.textGrey),
+                  onPressed: () => setState(() => _obscure = !_obscure),
+                ),
+              ),
+              validator: (val) => (val ?? '').isEmpty ? 'Kata sandi wajib diisi' : null,
+            ),
+            const SizedBox(height: 20),
+            if (_error.isNotEmpty) AuthErrorBox(_error),
+            AuthSubmitButton(label: 'Masuk', loading: _isLoading, onPressed: _tryLogin),
+            const SizedBox(height: 12),
+            const Text(
+              'Lupa kata sandi? Hubungi admin program studi.',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 12, color: AppColors.textGrey),
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              alignment: WrapAlignment.center,
+              crossAxisAlignment: WrapCrossAlignment.center,
               children: [
-                Container(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [
-                        AppColors.secondaryPink,
-                        AppColors.secondaryMagenta,
-                        AppColors.darkMagenta,
-                        AppColors.primaryDark,
-                      ],
-                      stops: const [0.0, 0.3, 0.7, 1.0],
-                    ),
-                  ),
-                ),
-                Positioned(
-                  bottom: 0,
-                  child: Container(
-                    width: screenWidth,
-                    height: screenHeight * 0.85,
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.only(
-                        topLeft: Radius.circular(scaleW(120)),
-                        topRight: Radius.circular(scaleW(120)),
-                      ),
-                    ),
-                  ),
-                ),
-                Positioned.fill(
-                  child: SingleChildScrollView(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        SizedBox(height: scaleH(350)),
-                        Text(
-                          'Login',
-                          style: TextStyle(fontFamily: 'Poppins', 
-                            fontSize: scaleFont(120),
-                            fontWeight: FontWeight.bold,
-                            color: AppColors.accentRed, // merah tua
-                            shadows: [
-                              Shadow(
-                                blurRadius: 4.0,
-                                color: Colors.black.withValues(alpha: 0.25),
-                                offset: Offset(0, 4),
-                              ),
-                            ],
-                          ),
-                        ),
-                        SizedBox(height: scaleH(100)),
-                        Center(
-                          child: ConstrainedBox(
-                            constraints: const BoxConstraints(maxWidth: 600),
-                            child: Container(
-                              width: screenWidth,
-                              padding: EdgeInsets.symmetric(horizontal: screenWidth > 600 ? 0 : scaleW(100)),
-                              child: Form(
-                            key: _formKey,
-                            child: Column(
-                              children: [
-                                _buildTextFieldWithIcon(
-                                  context: context,
-                                  hint: 'Enter your email',
-                                  icon: Icons.email_outlined,
-                                  onChanged: (val) => email = val,
-                                  validator: (val) {
-                                    if (val == null || val.isEmpty) {
-                                      return 'Please enter an email';
-                                    }
-                                    // Simple email regex validation
-                                    const emailPattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$';
-                                    if (!RegExp(emailPattern).hasMatch(val)) {
-                                      return 'Please enter a valid email';
-                                    }
-                                    return null;
-                                  },
-                                  keyboardType: TextInputType.emailAddress,
-                                ),
-                                SizedBox(height: scaleH(50)),
-                                _buildTextFieldWithIcon(
-                                  context: context,
-                                  hint: 'Enter password',
-                                  icon: Icons.lock_outline,
-                                  obscureText: _isPasswordObscure,
-                                  onChanged: (val) => password = val,
-                                  validator: (val) => val!.length < 6
-                                      ? 'Password must be 6+ characters'
-                                      : null,
-                                  suffixIcon: IconButton(
-                                    icon: Icon(
-                                      _isPasswordObscure
-                                          ? Icons.visibility_off
-                                          : Icons.visibility,
-                                      color: AppColors.accentRed, // merah tua
-                                    ),
-                                    onPressed: () {
-                                      setState(() {
-                                        _isPasswordObscure =
-                                            !_isPasswordObscure;
-                                      });
-                                    },
-                                  ),
-                                ),
-                                SizedBox(height: scaleH(50)),
-                                _buildLoginButton(context),
-                                SizedBox(height: scaleH(160)),
-                                _buildRegisterLink(context),
-                                if (error.isNotEmpty) ...[
-                                  SizedBox(height: scaleH(20)),
-                                  Text(
-                                    error,
-                                    style: TextStyle(
-                                      color: AppColors.accentRed, // merah tua
-                                      fontSize: scaleFont(30),
-                                    ),
-                                    textAlign: TextAlign.center,
-                                  ),
-                                ],
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                      ),
-                    ],
-                  ),
-                ),
+                const Text('Belum punya akun?', style: TextStyle(fontSize: 14, color: AppColors.textGrey)),
+                TextButton(
+                  onPressed: _isLoading
+                      ? null
+                      : () => Navigator.pushReplacement(
+                          context, MaterialPageRoute(builder: (_) => const RegisterScreen())),
+                  child: const Text('Daftar',
+                      style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: AppColors.accentRed)),
                 ),
               ],
             ),
-    );
-  }
-
-  Widget _buildTextFieldWithIcon({
-    required BuildContext context,
-    required String hint,
-    required IconData icon,
-    required Function(String) onChanged,
-    required String? Function(String?) validator,
-    bool obscureText = false,
-    TextInputType keyboardType = TextInputType.text,
-    Widget? suffixIcon,
-  }) {
-    double scaleFont(double val) =>
-        val *
-        min(MediaQuery.of(context).size.width / 1080.0,
-            MediaQuery.of(context).size.height / 1920.0);
-
-    return TextFormField(
-      onChanged: onChanged,
-      validator: validator,
-      obscureText: obscureText,
-      keyboardType: keyboardType,
-      style: TextStyle(fontFamily: 'Poppins', fontSize: scaleFont(40), color: Colors.black),
-      decoration: InputDecoration(
-        prefixIcon: Icon(icon, color: AppColors.accentRed), // magenta-red
-        suffixIcon: suffixIcon,
-        hintText: hint,
-        hintStyle:
-            TextStyle(fontFamily: 'Poppins', fontSize: scaleFont(40), color: Colors.grey),
-        filled: true,
-        fillColor: Colors.grey[200],
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(30.0),
-          borderSide: BorderSide.none,
-        ),
-        contentPadding: EdgeInsets.symmetric(vertical: 20.0),
-      ),
-    );
-  }
-
-  Widget _buildLoginButton(BuildContext context) {
-    double scaleH(double val) =>
-        val * MediaQuery.of(context).size.height / 1920.0;
-    double scaleFont(double val) =>
-        val *
-        min(MediaQuery.of(context).size.width / 1080.0,
-            MediaQuery.of(context).size.height / 1920.0);
-
-    return GestureDetector(
-      onTap: _tryLogin,
-      child: Container(
-        width: double.infinity,
-        height: scaleH(160),
-        decoration: BoxDecoration(
-          gradient: const LinearGradient(
-            colors: [AppColors.primaryPurple, AppColors.accentRed],
-            begin: Alignment.centerLeft,
-            end: Alignment.centerRight,
-          ),
-          borderRadius: BorderRadius.circular(30.0),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.25),
-              spreadRadius: 1,
-              blurRadius: 10,
-              offset: Offset(0, 5),
-            ),
           ],
         ),
-        child: Center(
-          child: Text(
-            'Login',
-            style: TextStyle(fontFamily: 'Poppins', 
-              fontSize: scaleFont(50),
-              fontWeight: FontWeight.bold,
-              color: Colors.white, // putih
+      ),
+    );
+  }
+}
+
+// ── Komponen tampilan halaman Masuk & Daftar (dipakai juga oleh RegisterScreen) ──
+
+class AuthFrame extends StatelessWidget {
+  final String title;
+  final String subtitle;
+  final Widget child;
+  const AuthFrame({required this.title, required this.subtitle, required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      extendBodyBehindAppBar: true,
+      appBar: AppBar(backgroundColor: Colors.transparent, foregroundColor: Colors.white, elevation: 0),
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [AppColors.secondaryPink, AppColors.secondaryMagenta, AppColors.darkMagenta, AppColors.primaryDark],
+            stops: [0.0, 0.3, 0.7, 1.0],
+          ),
+        ),
+        child: SafeArea(
+          child: Center(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 460),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Center(
+                      child: Container(
+                        decoration: BoxDecoration(shape: BoxShape.circle, boxShadow: [
+                          BoxShadow(color: Colors.white.withValues(alpha: 0.3), blurRadius: 20, spreadRadius: 2),
+                        ]),
+                        child: ClipOval(
+                          child: Image.asset('assets/images/logounair.png',
+                              width: 84, height: 84, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const SizedBox()),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Text(title,
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.white)),
+                    const SizedBox(height: 4),
+                    Text(subtitle,
+                        textAlign: TextAlign.center, style: const TextStyle(fontSize: 14, color: Colors.white70)),
+                    const SizedBox(height: 20),
+                    Container(
+                      padding: const EdgeInsets.all(24),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(24),
+                        boxShadow: [
+                          BoxShadow(color: Colors.black.withValues(alpha: 0.18), blurRadius: 20, offset: const Offset(0, 8)),
+                        ],
+                      ),
+                      child: child,
+                    ),
+                  ],
+                ),
+              ),
             ),
           ),
         ),
       ),
     );
   }
+}
 
-  Widget _buildRegisterLink(BuildContext context) {
-    double scaleFont(double val) =>
-        val *
-        min(MediaQuery.of(context).size.width / 1080.0,
-            MediaQuery.of(context).size.height / 1920.0);
+class AuthErrorBox extends StatelessWidget {
+  final String message;
+  const AuthErrorBox(this.message);
 
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        Text(
-          "Don't have an account?",
-          style: TextStyle(fontFamily: 'Poppins', 
-            fontSize: scaleFont(40),
-            color: Colors.black54,
-          ),
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.errorRed.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.errorRed.withValues(alpha: 0.35)),
+      ),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const Icon(Icons.error_outline, color: AppColors.errorRed, size: 20),
+        const SizedBox(width: 8),
+        Expanded(child: Text(message, style: const TextStyle(fontSize: 14, color: AppColors.errorRed))),
+      ]),
+    );
+  }
+}
+
+class AuthSubmitButton extends StatelessWidget {
+  final String label;
+  final bool loading;
+  final VoidCallback onPressed;
+  const AuthSubmitButton({required this.label, required this.loading, required this.onPressed});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 54,
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(colors: [AppColors.primaryPurple, AppColors.accentRed]),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: ElevatedButton(
+        style: ElevatedButton.styleFrom(
+          backgroundColor: Colors.transparent,
+          shadowColor: Colors.transparent,
+          foregroundColor: Colors.white,
+          disabledBackgroundColor: Colors.transparent,
+          disabledForegroundColor: Colors.white70,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
         ),
-        TextButton(
-          onPressed: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(builder: (context) => RegisterScreen()),
-            );
-          },
-          child: Text(
-            'Register',
-            style: TextStyle(fontFamily: 'Poppins', 
-              fontSize: scaleFont(40),
-              fontWeight: FontWeight.bold,
-              color: AppColors.accentRed, // merah tua
-            ),
-          ),
-        ),
-      ],
+        onPressed: loading ? null : onPressed,
+        child: loading
+            ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.white))
+            : Text(label, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+      ),
     );
   }
 }

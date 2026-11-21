@@ -1,305 +1,321 @@
 import 'package:flutter/material.dart';
 import 'package:fp_pemrograman/colors.dart';
-import 'package:fp_pemrograman/service/auth_service.dart';
-import 'package:fp_pemrograman/screens/login_screen.dart';
-import 'package:fp_pemrograman/widgets/responsive_wrapper.dart';
+import 'package:fp_pemrograman/screens/penilaian_saya_screen.dart';
+import 'package:fp_pemrograman/service/api_service.dart';
+import 'package:fp_pemrograman/utils/labels.dart';
+import 'package:fp_pemrograman/widgets/ui.dart';
 
+/// Profil pengguna: identitas, pembimbing & dosen wali, status SP, Nilai Saya,
+/// 3 pilar regulasi, dan tombol keluar.
+///
+/// [embedded] = true bila ditampilkan sebagai tab di dalam DashboardScreen
+/// (AppBar disediakan oleh shell), false bila dibuka sebagai halaman sendiri.
 class ProfileScreen extends StatefulWidget {
-  const ProfileScreen({super.key});
+  final bool embedded;
+  const ProfileScreen({super.key, this.embedded = false});
+
   @override
   State<ProfileScreen> createState() => _ProfileScreenState();
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
-  final AuthService _auth = AuthService();
+  final ApiService _api = ApiService();
   Map<String, dynamic>? _user;
-  bool _isLoading = true;
+  String? _error;
+  bool _loading = true;
 
   @override
   void initState() {
     super.initState();
-    _loadUser();
+    _load();
   }
 
-  void _loadUser() async {
-    final user = await _auth.getCurrentUser();
+  Future<void> _load() async {
+    final me = await _api.getMe();
+    if (!mounted) return;
     setState(() {
-      _user = user;
-      _isLoading = false;
+      _loading = false;
+      _user = me;
+      _error = me == null ? (_api.lastError ?? 'Gagal memuat profil. Periksa koneksi internet.') : null;
     });
-  }
-
-  Future<void> _logout() async {
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text('Konfirmasi Logout', style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold)),
-        content: const Text('Apakah Anda yakin ingin keluar?', style: TextStyle(fontFamily: 'Poppins')),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Batal')),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: AppColors.accentRed),
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Logout', style: TextStyle(color: Colors.white)),
-          ),
-        ],
-      ),
-    );
-
-    if (confirm == true) {
-      await _auth.signOut();
-      if (!mounted) return;
-      Navigator.pushAndRemoveUntil(
-        context,
-        MaterialPageRoute(builder: (_) => const LoginScreen()),
-        (route) => false,
-      );
-    }
-  }
-
-  Color _getPhaseColor(String? phase) {
-    switch (phase?.toLowerCase()) {
-      case 'red': return Colors.red.shade600;
-      case 'yellow': return Colors.orange.shade600;
-      case 'green': return Colors.green.shade600;
-      default: return Colors.blueGrey;
-    }
-  }
-
-  String _getPhaseLabel(String? phase) {
-    switch (phase?.toLowerCase()) {
-      case 'mkdu': return 'MKDU';
-      case 'red': return 'Tahap Merah';
-      case 'yellow': return 'Tahap Kuning';
-      case 'green': return 'Tahap Hijau';
-      default: return 'Tidak Diketahui';
-    }
   }
 
   @override
   Widget build(BuildContext context) {
+    final body = RefreshIndicator(onRefresh: _load, child: _body());
+    if (widget.embedded) return body;
     return Scaffold(
-      backgroundColor: AppColors.backgroundLightest,
       appBar: AppBar(
-        title: const Text('Profil Saya', style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold)),
-        backgroundColor: AppColors.primaryPurple,
-        foregroundColor: Colors.white,
-        elevation: 0,
+        title: const Text('Profil Saya', style: TextStyle(fontWeight: FontWeight.bold)),
+        actions: const [NotificationBell(), SizedBox(width: 4)],
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : _user == null
-              ? const Center(child: Text('Gagal memuat data profil'))
-              : ResponsiveWrapper(
-                  child: SingleChildScrollView(
-                    child: Column(
-                    children: [
-                      // Header gradient card
-                      Container(
-                        width: double.infinity,
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            colors: [AppColors.primaryPurple, AppColors.darkMagenta],
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
-                          ),
-                        ),
-                        padding: const EdgeInsets.fromLTRB(24, 24, 24, 40),
-                        child: Column(
-                          children: [
-                            // Avatar
-                            Container(
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                border: Border.all(color: Colors.white, width: 3),
-                                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 12)],
-                              ),
-                              child: CircleAvatar(
-                                radius: 45,
-                                backgroundColor: AppColors.accentRed,
-                                child: Text(
-                                  (_user?['full_name'] ?? 'P').substring(0, 1).toUpperCase(),
-                                  style: const TextStyle(fontSize: 36, fontWeight: FontWeight.bold, color: Colors.white),
-                                ),
-                              ),
-                            ),
-                            const SizedBox(height: 14),
-                            Text(_user?['full_name'] ?? '-',
-                                style: const TextStyle(
-                                    fontFamily: 'Poppins',
-                                    fontSize: 20,
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.white)),
-                            const SizedBox(height: 4),
-                            Text(_user?['email'] ?? '-',
-                                style: const TextStyle(fontFamily: 'Poppins', color: Colors.white70, fontSize: 13)),
-                            const SizedBox(height: 12),
-                            // Phase badge
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-                              decoration: BoxDecoration(
-                                color: _getPhaseColor(_user?['phase']),
-                                borderRadius: BorderRadius.circular(20),
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  const Icon(Icons.local_hospital, color: Colors.white, size: 16),
-                                  const SizedBox(width: 6),
-                                  Text(_getPhaseLabel(_user?['phase']),
-                                      style: const TextStyle(
-                                          fontFamily: 'Poppins',
-                                          color: Colors.white,
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 13)),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
+      body: body,
+    );
+  }
 
-                      // Info Cards
-                      Transform.translate(
-                        offset: const Offset(0, -20),
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 16),
-                          child: Column(
-                            children: [
-                              _buildInfoCard([
-                                _buildInfoRow(Icons.badge_outlined, 'NIM', _user?['nim'] ?? '-'),
-                                _buildInfoRow(Icons.school_outlined, 'Semester', '${_user?['current_semester'] ?? '-'}'),
-                                _buildInfoRow(Icons.email_outlined, 'Email', _user?['email'] ?? '-'),
-                              ]),
-                              const SizedBox(height: 12),
-                              _buildInfoCard([
-                                _buildInfoRow(Icons.info_outline, 'Status',
-                                    'PPDS Patologi Anatomi - UNAIR'),
-                                _buildInfoRow(Icons.location_city_outlined, 'Institusi',
-                                    'Universitas Airlangga'),
-                              ]),
-                              const SizedBox(height: 12),
+  Widget _body() {
+    if (_loading) return const LoadingView();
+    if (_error != null) {
+      return LayoutBuilder(
+        builder: (context, c) => SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: c.maxHeight),
+            child: ErrorState(
+              message: _error!,
+              onRetry: () {
+                setState(() => _loading = true);
+                _load();
+              },
+            ),
+          ),
+        ),
+      );
+    }
+    final u = _user!;
+    final isPpds = (u['role'] ?? 'ppds') == 'ppds';
 
-                              // ── Dosen Wali & Pembimbing Card ──
-                              Container(
-                                decoration: BoxDecoration(
-                                  color: Colors.white,
-                                  borderRadius: BorderRadius.circular(16),
-                                  boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.06), blurRadius: 10, offset: const Offset(0, 4))],
-                                ),
-                                padding: const EdgeInsets.all(16),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Row(
-                                      children: [
-                                        const Icon(Icons.people_alt_outlined, color: AppColors.primaryPurple, size: 18),
-                                        const SizedBox(width: 8),
-                                        const Text('Pembimbing & Pengajar',
-                                            style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold, fontSize: 13, color: AppColors.primaryPurple)),
-                                      ],
-                                    ),
-                                    const Divider(height: 20),
-                                    _buildInfoRow(Icons.person_outline, 'Dosen Wali',
-                                        _user?['dosen_wali'] ?? '-'),
-                                    _buildInfoRow(Icons.school_outlined, 'Pembimbing 1',
-                                        _user?['pembimbing_1'] ?? '-'),
-                                    _buildInfoRow(Icons.school_outlined, 'Pembimbing 2',
-                                        _user?['pembimbing_2'] ?? '-'),
-                                    _buildInfoRow(Icons.history_edu_outlined, 'Pemb. Retrospektif',
-                                        _user?['pembimbing_retrospektif'] ?? '-'),
-                                  ],
-                                ),
-                              ),
-
-                              // ── SP/Warning Badge (jika aktif) ──
-                              if (_user?['warning_active'] == true) ...[
-                                const SizedBox(height: 12),
-                                Container(
-                                  width: double.infinity,
-                                  padding: const EdgeInsets.all(14),
-                                  decoration: BoxDecoration(
-                                    color: Colors.red.shade50,
-                                    borderRadius: BorderRadius.circular(14),
-                                    border: Border.all(color: Colors.red.shade300, width: 1.5),
-                                  ),
-                                  child: Row(
-                                    children: [
-                                      const Icon(Icons.warning_amber_rounded, color: Colors.red, size: 22),
-                                      const SizedBox(width: 10),
-                                      Expanded(
-                                        child: Column(
-                                          crossAxisAlignment: CrossAxisAlignment.start,
-                                          children: [
-                                            const Text('Status Peringatan Aktif',
-                                                style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold, fontSize: 13, color: Colors.red)),
-                                            const SizedBox(height: 2),
-                                            Text(_user?['warning_message'] ?? 'Anda sedang dalam status SP. Hubungi koordinator.',
-                                                style: TextStyle(fontFamily: 'Poppins', fontSize: 11, color: Colors.red.shade700)),
-                                          ],
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ],
-                              // Logout Button
-                              SizedBox(
-                                width: double.infinity,
-                                child: ElevatedButton.icon(
-                                  onPressed: _logout,
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: AppColors.accentRed,
-                                    foregroundColor: Colors.white,
-                                    padding: const EdgeInsets.symmetric(vertical: 14),
-                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                                    elevation: 4,
-                                  ),
-                                  icon: const Icon(Icons.logout),
-                                  label: const Text('Logout',
-                                      style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold, fontSize: 16)),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ],
+    return ListView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: const EdgeInsets.all(16),
+      children: [
+        MaxWidth(
+          maxWidth: 760,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _header(u),
+              const SizedBox(height: 12),
+              const SectionTitle('Identitas'),
+              _identityCard(u, isPpds),
+              if (isPpds) ...[
+                const SectionTitle('Pembimbing & Dosen Wali'),
+                _pembimbingCard(u),
+                const SectionTitle('Status Surat Peringatan (SP)'),
+                _spCard(u),
+                const SectionTitle('Penilaian'),
+                AppCard(
+                  padding: EdgeInsets.zero,
+                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const PenilaianSayaScreen())),
+                  child: const ListTile(
+                    contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                    leading: Icon(Icons.grade_outlined, color: AppColors.primaryPurple),
+                    title: Text('Nilai Saya', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+                    subtitle: Text('Nilai dari dosen wali & pembimbing per semester', style: TextStyle(fontSize: 13)),
+                    trailing: Icon(Icons.chevron_right),
                   ),
                 ),
+                const _PilarRegulasiCard(),
+              ],
+              const SizedBox(height: 8),
+              SizedBox(
+                height: 50,
+                child: OutlinedButton.icon(
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppColors.errorRed,
+                    side: const BorderSide(color: AppColors.errorRed),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                  ),
+                  onPressed: () => logoutWithConfirm(context),
+                  icon: const Icon(Icons.logout),
+                  label: const Text('Keluar', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+                ),
               ),
+              const SizedBox(height: 16),
+            ],
+          ),
+        ),
+      ],
     );
   }
 
-  Widget _buildInfoCard(List<Widget> rows) {
+  String _str(Object? v) {
+    final s = (v ?? '').toString().trim();
+    return s.isEmpty || s == '-' ? '' : s;
+  }
+
+  Widget _header(Map<String, dynamic> u) {
+    final name = _str(u['full_name']);
     return Container(
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.06), blurRadius: 10, offset: const Offset(0, 4))],
+        gradient: const LinearGradient(
+          colors: [AppColors.primaryPurple, AppColors.darkMagenta],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(20),
       ),
-      padding: const EdgeInsets.all(16),
-      child: Column(children: rows),
+      child: Row(
+        children: [
+          CircleAvatar(
+            radius: 32,
+            backgroundColor: Colors.white.withValues(alpha: 0.2),
+            child: Text(name.isEmpty ? 'P' : name.substring(0, 1).toUpperCase(),
+                style: const TextStyle(fontSize: 26, fontWeight: FontWeight.bold, color: Colors.white)),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(name.isEmpty ? '-' : name,
+                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white)),
+                if (_str(u['email']).isNotEmpty)
+                  Text(_str(u['email']), style: const TextStyle(fontSize: 13, color: Colors.white70)),
+                const SizedBox(height: 8),
+                if ((u['role'] ?? 'ppds') == 'ppds')
+                  PhaseBadge(u['phase']?.toString(), onDark: true)
+                else
+                  Text(roleLabel(u['role']?.toString()),
+                      style: const TextStyle(fontSize: 13, color: Colors.white, fontWeight: FontWeight.w600)),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 
-  Widget _buildInfoRow(IconData icon, String label, String value) {
+  Widget _identityCard(Map<String, dynamic> u, bool isPpds) {
+    return AppCard(
+      child: Column(children: [
+        _row(Icons.person_outline, 'Nama', _str(u['full_name'])),
+        if (isPpds) ...[
+          _row(Icons.badge_outlined, 'NIM', _str(u['nim'])),
+          _row(Icons.groups_outlined, 'Angkatan', _str(u['angkatan'])),
+          _row(Icons.school_outlined, 'Semester', _str(u['current_semester'])),
+          _rowWidget(Icons.military_tech_outlined, 'Kalung', PhaseBadge(u['phase']?.toString())),
+        ] else
+          _row(Icons.work_outline, 'Peran', roleLabel(u['role']?.toString())),
+        _row(Icons.email_outlined, 'Email', _str(u['email'])),
+      ]),
+    );
+  }
+
+  Widget _pembimbingCard(Map<String, dynamic> u) {
+    return AppCard(
+      child: Column(children: [
+        for (final e in peranPembimbingLabel.entries)
+          _row(e.key == 'dosen_wali' ? Icons.person_pin_outlined : Icons.school_outlined, e.value, _str(u[e.key]),
+              emptyText: 'Belum ditentukan'),
+      ]),
+    );
+  }
+
+  Widget _spCard(Map<String, dynamic> u) {
+    if (u['warning_active'] == true) {
+      final msg = _str(u['warning_message']);
+      return AppCard(
+        borderColor: AppColors.errorRed.withValues(alpha: 0.4),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          const Row(children: [
+            Icon(Icons.gpp_maybe_outlined, color: AppColors.errorRed),
+            SizedBox(width: 8),
+            Expanded(
+              child: Text('Surat Peringatan (SP) aktif',
+                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: AppColors.errorRed)),
+            ),
+          ]),
+          NoteBox(
+            title: 'Keterangan',
+            text: msg.isEmpty ? 'Anda sedang menerima Surat Peringatan. Segera hubungi koordinator program studi.' : msg,
+            color: AppColors.errorRed,
+            icon: Icons.warning_amber_rounded,
+          ),
+        ]),
+      );
+    }
+    return const AppCard(
+      child: Row(children: [
+        Icon(Icons.verified_user_outlined, color: AppColors.successGreen),
+        SizedBox(width: 10),
+        Expanded(
+          child: Text('Tidak ada Surat Peringatan aktif.', style: TextStyle(fontSize: 14, color: AppColors.textDark)),
+        ),
+      ]),
+    );
+  }
+
+  Widget _row(IconData icon, String label, String value, {String emptyText = '-'}) {
+    final empty = value.isEmpty;
+    return _rowWidget(
+      icon,
+      label,
+      Text(empty ? emptyText : value,
+          style: TextStyle(
+            fontSize: 14,
+            fontWeight: empty ? FontWeight.w400 : FontWeight.w600,
+            fontStyle: empty && emptyText != '-' ? FontStyle.italic : FontStyle.normal,
+            color: empty ? AppColors.textGrey : AppColors.textDark,
+          )),
+    );
+  }
+
+  Widget _rowWidget(IconData icon, String label, Widget value) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
+      padding: const EdgeInsets.symmetric(vertical: 7),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           Icon(icon, size: 20, color: AppColors.primaryPurple),
           const SizedBox(width: 12),
           SizedBox(
-            width: 90,
-            child: Text(label, style: TextStyle(fontFamily: 'Poppins', fontSize: 13, color: AppColors.textGrey)),
+            width: 120,
+            child: Text(label, style: const TextStyle(fontSize: 14, color: AppColors.textGrey)),
           ),
-          Expanded(
-            child: Text(value,
-                style: const TextStyle(fontFamily: 'Poppins', fontSize: 13, fontWeight: FontWeight.w600)),
-          ),
+          Expanded(child: Align(alignment: Alignment.centerLeft, child: value)),
         ],
+      ),
+    );
+  }
+}
+
+/// Info "3 Pilar Regulasi PPDS" (dapat dibuka-tutup).
+class _PilarRegulasiCard extends StatelessWidget {
+  const _PilarRegulasiCard();
+
+  static const _pilar = [
+    (Icons.business, AppColors.primaryPurple, 'Pilar Internal Prodi', 'Stase, logbook, ujian organ lokal'),
+    (Icons.account_balance, AppColors.infoBlue, 'Pilar Kolegium PA', 'Ujian Nasional Tahap 1 & Board Sp.PA'),
+    (Icons.school, AppColors.successGreen, 'Pilar UNAIR', 'Administrasi, MKDU, publikasi Scopus'),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: AppCard(
+        padding: EdgeInsets.zero,
+        child: ExpansionTile(
+          shape: const Border(),
+          collapsedShape: const Border(),
+          tilePadding: const EdgeInsets.symmetric(horizontal: 16),
+          childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+          leading: const Icon(Icons.account_tree_outlined, color: AppColors.primaryPurple),
+          title: const Text('3 Pilar Regulasi PPDS', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+          subtitle: const Text('Aturan yang mengatur pendidikan Anda', style: TextStyle(fontSize: 12)),
+          children: [
+            for (final p in _pilar)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: Row(children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(color: p.$2.withValues(alpha: 0.12), shape: BoxShape.circle),
+                    child: Icon(p.$1, color: p.$2, size: 18),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Text(p.$3, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+                      Text(p.$4, style: const TextStyle(fontSize: 13, color: AppColors.textGrey)),
+                    ]),
+                  ),
+                ]),
+              ),
+          ],
+        ),
       ),
     );
   }
