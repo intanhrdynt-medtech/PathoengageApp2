@@ -159,6 +159,7 @@ class Penelitian(db.Model):
     ethical_clearance_url = db.Column(db.String(500), nullable=True)
     target_semester = db.Column(db.Integer, nullable=True)
     notes = db.Column(db.Text, nullable=True)
+    catatan_penilai = db.Column(db.Text, nullable=True)  # komentar saat disetujui / ditolak
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

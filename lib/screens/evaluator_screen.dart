@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:fp_pemrograman/colors.dart';
 import 'package:fp_pemrograman/service/api_service.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class EvaluatorScreen extends StatefulWidget {
   const EvaluatorScreen({Key? key}) : super(key: key);
@@ -38,8 +39,10 @@ class _EvaluatorScreenState extends State<EvaluatorScreen>
       final penelitian = await _api.getAllPenelitian('');
       setState(() {
         _pendingJournals = journals;
-        _pendingPenelitian =
-            penelitian.where((p) => p['status'] == 'submitted').toList();
+        // Antrean review: baru diajukan, atau dokumen revisi sudah diunggah PPDS.
+        _pendingPenelitian = penelitian
+            .where((p) => p['perlu_review'] == true || p['status'] == 'submitted')
+            .toList();
       });
     } catch (e) {
       debugPrint('Error loading evaluator data: $e');
@@ -54,6 +57,8 @@ class _EvaluatorScreenState extends State<EvaluatorScreen>
       case 'pending': return Colors.orange;
       case 'rejected': return Colors.red;
       case 'submitted': return Colors.blue;
+      case 'revisi_1': return Colors.orange;
+      case 'revisi_2': return Colors.deepOrange;
       default: return Colors.grey;
     }
   }
@@ -64,6 +69,8 @@ class _EvaluatorScreenState extends State<EvaluatorScreen>
       case 'pending': return 'Menunggu';
       case 'rejected': return 'Ditolak';
       case 'submitted': return 'Diajukan';
+      case 'revisi_1': return 'Revisi 1 diunggah';
+      case 'revisi_2': return 'Revisi 2 diunggah';
       default: return s ?? '-';
     }
   }
@@ -164,6 +171,13 @@ class _EvaluatorScreenState extends State<EvaluatorScreen>
                 _infoRow('Pengaju', pen['user_name'] ?? '-'),
                 _infoRow('Jenis', pen['jenis'] ?? '-'),
                 _infoRow('Pembimbing', pen['pembimbing_1'] ?? '-'),
+                _docLink('Dokumen Proposal', pen['dokumen_proposal_url']),
+                _docLink('Dokumen Revisi 1', pen['dokumen_revisi1_url']),
+                _docLink('Dokumen Revisi 2', pen['dokumen_revisi2_url']),
+                if ((pen['catatan_revisi1'] ?? '').toString().isNotEmpty)
+                  _infoRow('Catatan R1', pen['catatan_revisi1']),
+                if ((pen['catatan_revisi2'] ?? '').toString().isNotEmpty)
+                  _infoRow('Catatan R2', pen['catatan_revisi2']),
                 const SizedBox(height: 14),
                 const Text('Keputusan', style: TextStyle(fontWeight: FontWeight.w600, fontFamily: 'Poppins')),
                 const SizedBox(height: 6),
@@ -217,6 +231,31 @@ class _EvaluatorScreenState extends State<EvaluatorScreen>
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _docLink(String label, dynamic url) {
+    final link = (url ?? '').toString();
+    if (link.isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: InkWell(
+        onTap: () async {
+          try {
+            await launchUrl(Uri.parse(link), mode: LaunchMode.externalApplication);
+          } catch (_) {
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Link dokumen tidak bisa dibuka')));
+            }
+          }
+        },
+        child: Row(children: [
+          const Icon(Icons.open_in_new, size: 14, color: Colors.blue),
+          const SizedBox(width: 6),
+          Text(label, style: const TextStyle(fontSize: 12, color: Colors.blue, decoration: TextDecoration.underline)),
+        ]),
       ),
     );
   }

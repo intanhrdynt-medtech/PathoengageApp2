@@ -12,6 +12,7 @@ import 'package:fp_pemrograman/screens/pengabdian_screen.dart';
 import 'package:fp_pemrograman/screens/prestasi_screen.dart';
 import 'package:fp_pemrograman/screens/journal_screen.dart';
 import 'package:fp_pemrograman/widgets/responsive_wrapper.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -32,6 +33,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   int _totalExams = 0;
   int _passedExams = 0;
   int _pendingTasks = 0;
+  List<dynamic> _surveys = [];
 
   @override
   void initState() {
@@ -44,9 +46,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final competencies = await _api.getCompetencies();
     final exams = await _api.getExams();
     final tasks = await _api.getAcademicTasks();
+    final surveys = await _api.getActiveSurveys();
+    if (!mounted) return;
 
     setState(() {
       userProfile = user;
+      _surveys = surveys;
       _totalCompetencies = competencies.length;
       _completedCompetencies = competencies.where((c) => c['status'] == 'completed').length;
       _totalExams = exams.length;
@@ -228,24 +233,36 @@ class _DashboardScreenState extends State<DashboardScreen> {
               const SizedBox(height: 16),
             ],
 
-            Card(
-              elevation: 0,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16), side: BorderSide(color: Colors.orange.shade200)),
-              color: Colors.orange.shade50,
-              child: ListTile(
-                leading: const Icon(Icons.assignment, color: Colors.orange, size: 36),
-                title: const Text('Survey Semester', style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold, fontSize: 14)),
-                subtitle: const Text('Jangan lupa isi survey evaluasi semester ini.', style: TextStyle(fontSize: 12)),
-                trailing: ElevatedButton(
-                  style: ElevatedButton.styleFrom(backgroundColor: Colors.orange, foregroundColor: Colors.white),
-                  onPressed: () {
-                    // TODO: Ganti dengan URL survey yang sebenarnya
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Link survey belum tersedia.')));
-                  },
-                  child: const Text('Isi Sekarang'),
+            // Pengingat survey semester (link diatur admin di menu Survey).
+            for (final survey in _surveys)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Card(
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16), side: BorderSide(color: Colors.orange.shade200)),
+                  color: Colors.orange.shade50,
+                  child: ListTile(
+                    leading: const Icon(Icons.assignment, color: Colors.orange, size: 36),
+                    title: Text(survey['judul'] ?? 'Survey Semester',
+                        style: const TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold, fontSize: 14)),
+                    subtitle: const Text('Jangan lupa isi survey evaluasi semester ini.', style: TextStyle(fontSize: 12)),
+                    trailing: ElevatedButton(
+                      style: ElevatedButton.styleFrom(backgroundColor: Colors.orange, foregroundColor: Colors.white),
+                      onPressed: () async {
+                        try {
+                          await launchUrl(Uri.parse(survey['link_survey']), mode: LaunchMode.externalApplication);
+                        } catch (_) {
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('Link survey tidak bisa dibuka.')));
+                          }
+                        }
+                      },
+                      child: const Text('Isi Sekarang'),
+                    ),
+                  ),
                 ),
               ),
-            ),
 
             const SizedBox(height: 16),
 

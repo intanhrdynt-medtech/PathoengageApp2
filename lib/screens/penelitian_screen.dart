@@ -350,6 +350,23 @@ class _PenelitianScreenState extends State<PenelitianScreen> with SingleTickerPr
                     child: Text('Catatan Revisi 2: ${p['catatan_revisi2']}', style: TextStyle(color: Colors.red.shade800, fontSize: 11)),
                   ),
                 ],
+                if ((status == 'revisi_1' || status == 'revisi_2') && p['perlu_review'] == true) ...[
+                  const SizedBox(height: 8),
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    color: Colors.blue.shade50,
+                    child: Text('Dokumen revisi sudah diunggah, menunggu review penilai.', style: TextStyle(color: Colors.blue.shade800, fontSize: 11)),
+                  ),
+                ],
+                if ((status == 'approved' || status == 'rejected') && (p['catatan_penilai'] ?? '').toString().isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    color: status == 'approved' ? Colors.green.shade50 : Colors.red.shade50,
+                    child: Text('Catatan Penilai: ${p['catatan_penilai']}',
+                        style: TextStyle(color: status == 'approved' ? Colors.green.shade800 : Colors.red.shade800, fontSize: 11)),
+                  ),
+                ],
 
                 const SizedBox(height: 12),
                 const Divider(),

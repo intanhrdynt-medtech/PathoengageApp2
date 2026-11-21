@@ -4,6 +4,7 @@ import 'package:fp_pemrograman/service/auth_service.dart';
 import 'package:fp_pemrograman/screens/login_screen.dart';
 import 'package:fp_pemrograman/screens/admin_verification_screen.dart';
 import 'package:fp_pemrograman/screens/admin_users_screen.dart';
+import 'package:fp_pemrograman/screens/admin_survey_screen.dart';
 import 'package:fp_pemrograman/service/api_service.dart';
 
 class AdminDashboardScreen extends StatefulWidget {
@@ -20,6 +21,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   final List<Widget> _screens = [
     const AdminVerificationScreen(),
     const AdminUsersScreen(),
+    const AdminSurveyScreen(),
   ];
 
   @override
@@ -44,7 +46,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     final pendingVerif = results[0] as List;
     final pendingJournals = results[1] as List;
     final pendingPenelitian = (results[2] as List)
-        .where((p) => p['status'] == 'submitted')
+        .where((p) => p['perlu_review'] == true || p['status'] == 'submitted')
         .toList();
 
     final totalPending = pendingVerif.length + pendingJournals.length + pendingPenelitian.length;
@@ -86,7 +88,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                 if (pendingJournals.isNotEmpty)
                   _notifRow(Icons.article_outlined, 'Journal Reading', pendingJournals.length, Colors.orange),
                 if (pendingPenelitian.isNotEmpty)
-                  _notifRow(Icons.science_outlined, 'Penelitian', pendingPenelitian.length, Colors.purple),
+                  _notifRow(Icons.science_outlined, 'Penelitian (direview penilai)', pendingPenelitian.length, Colors.purple),
                 const SizedBox(height: 20),
                 Row(
                   children: [
@@ -160,6 +162,11 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       activeIcon: Icon(Icons.people),
       label: 'Manajemen PPDS',
     ),
+    BottomNavigationBarItem(
+      icon: Icon(Icons.assignment_outlined),
+      activeIcon: Icon(Icons.assignment),
+      label: 'Survey',
+    ),
   ];
 
   void _onItemTapped(int index) {
@@ -179,6 +186,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     switch (_selectedIndex) {
       case 0: return 'Verifikasi Pengajuan';
       case 1: return 'Manajemen PPDS';
+      case 2: return 'Survey Semester';
       default: return 'Admin Dashboard';
     }
   }

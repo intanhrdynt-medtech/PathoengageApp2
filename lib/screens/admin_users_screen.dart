@@ -778,7 +778,7 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
                                 _actionButton(Icons.warning_amber, 'Warning',
                                     Colors.deepOrange, () => _showWarningDialog(u)),
                                 _actionButton(Icons.medical_services_outlined, 'Ujian Organ',
-                                    Colors.teal, () => _showAddOrganExamDialog(u)),
+                                    Colors.teal, () => _showOrganExamsDialog(u)),
                                 _actionButton(Icons.school, 'Profil Akademik',
                                     Colors.indigo, () => _showEditAcademicProfileDialog(u)),
                                 _actionButton(Icons.edit, 'Edit', AppColors.primaryPurple,
@@ -874,60 +874,232 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
     );
   }
 
-  void _showAddOrganExamDialog(Map<String, dynamic> user) {
-    final namaUjianCtrl = TextEditingController();
-    final organCtrl = TextEditingController();
-    final pengujiCtrl = TextEditingController();
-    bool isLoading = false;
+  // ── Ujian Organ: daftar per PPDS, tambah, dan isi hasil / nilai ──────────────
+
+  static const Map<String, String> _organResultLabels = {
+    'terjadwal': 'Terjadwal',
+    'lulus': 'Lulus',
+    'tidak_lulus': 'Tidak Lulus',
+  };
+
+  String _fmtDate(String? iso) {
+    if (iso == null || iso.isEmpty) return '-';
+    final d = DateTime.tryParse(iso);
+    if (d == null) return '-';
+    return '${d.day.toString().padLeft(2, '0')}-${d.month.toString().padLeft(2, '0')}-${d.year}';
+  }
+
+  void _showOrganExamsDialog(Map<String, dynamic> user) {
+    Future<List<dynamic>> future = _api.adminGetOrganExams(user['id']);
     showDialog(
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDialogState) => AlertDialog(
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: const Text('Tambah Jadwal Ujian Organ', style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold)),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                _dialogField(namaUjianCtrl, 'Nama Ujian', Icons.medical_services),
-                const SizedBox(height: 10),
-                _dialogField(organCtrl, 'Organ (opsional)', Icons.visibility),
-                const SizedBox(height: 10),
-                _dialogField(pengujiCtrl, 'Penguji', Icons.person_search),
-              ],
+          title: Text('Ujian Organ — ${user['full_name'] ?? ''}',
+              style: const TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold, fontSize: 16)),
+          content: SizedBox(
+            width: 420,
+            child: FutureBuilder<List<dynamic>>(
+              future: future,
+              builder: (ctx, snap) {
+                if (snap.connectionState != ConnectionState.done) {
+                  return const SizedBox(height: 120, child: Center(child: CircularProgressIndicator()));
+                }
+                final items = snap.data ?? [];
+                if (items.isEmpty) {
+                  return const SizedBox(
+                    height: 80,
+                    child: Center(child: Text('Belum ada ujian organ untuk PPDS ini.', style: TextStyle(color: Colors.grey))),
+                  );
+                }
+                return ListView.separated(
+                  shrinkWrap: true,
+                  itemCount: items.length,
+                  separatorBuilder: (_, __) => const Divider(height: 1),
+                  itemBuilder: (ctx, i) {
+                    final e = items[i] as Map<String, dynamic>;
+                    final hasil = (e['hasil'] ?? 'terjadwal').toString();
+                    final nilai = e['nilai'];
+                    return ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: Text(e['nama_ujian'] ?? '-', style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+                      subtitle: Text(
+                        'Organ: ${e['organ'] ?? '-'} • Penguji: ${e['penguji'] ?? '-'}\n'
+                        'Tanggal: ${_fmtDate(e['tanggal'])} • ${_organResultLabels[hasil] ?? hasil}'
+                        '${nilai != null ? ' • Nilai: $nilai' : ''}',
+                        style: const TextStyle(fontSize: 11),
+                      ),
+                      isThreeLine: true,
+                      trailing: IconButton(
+                        icon: const Icon(Icons.edit, color: Colors.teal),
+                        tooltip: 'Isi hasil / edit',
+                        onPressed: () async {
+                          final saved = await _showOrganExamForm(user, e);
+                          if (saved) setDialogState(() => future = _api.adminGetOrganExams(user['id']));
+                        },
+                      ),
+                    );
+                  },
+                );
+              },
             ),
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Batal')),
-            ElevatedButton(
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Tutup')),
+            ElevatedButton.icon(
               style: ElevatedButton.styleFrom(backgroundColor: Colors.teal, foregroundColor: Colors.white),
-              onPressed: isLoading ? null : () async {
-                setDialogState(() => isLoading = true);
-                final ok = await _api.adminAddOrganExam({
-                  'user_id': user['id'],
-                  'nama_ujian': namaUjianCtrl.text.trim(),
-                  'organ': organCtrl.text.trim(),
-                  'penguji': pengujiCtrl.text.trim(),
-                  'hasil': 'terjadwal',
-                });
-                if (ok && mounted) {
-                  Navigator.pop(ctx);
-                  _loadData();
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Ujian organ berhasil ditambahkan!')));
-                } else {
-                  setDialogState(() => isLoading = false);
-                  ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(content: Text('Gagal menambah ujian organ')));
-                }
+              icon: const Icon(Icons.add, size: 18),
+              label: const Text('Tambah Ujian'),
+              onPressed: () async {
+                final saved = await _showOrganExamForm(user, null);
+                if (saved) setDialogState(() => future = _api.adminGetOrganExams(user['id']));
               },
-              child: isLoading ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Text('Simpan'),
             ),
           ],
         ),
       ),
     );
   }
-}
 
+  /// Form tambah (exam == null) atau edit ujian organ. Mengembalikan true bila tersimpan.
+  Future<bool> _showOrganExamForm(Map<String, dynamic> user, Map<String, dynamic>? exam) async {
+    final isEdit = exam != null;
+    final namaUjianCtrl = TextEditingController(text: exam?['nama_ujian'] ?? '');
+    final organCtrl = TextEditingController(text: exam?['organ'] ?? '');
+    final pengujiCtrl = TextEditingController(text: exam?['penguji'] ?? '');
+    final nilaiCtrl = TextEditingController(text: exam?['nilai']?.toString() ?? '');
+    final catatanCtrl = TextEditingController(text: exam?['catatan'] ?? '');
+    String hasil = (exam?['hasil'] ?? 'terjadwal').toString();
+    if (!_organResultLabels.containsKey(hasil)) hasil = 'terjadwal';
+    DateTime? tanggal = exam?['tanggal'] != null ? DateTime.tryParse(exam!['tanggal']) : null;
+    bool isLoading = false;
+    String errorMsg = '';
+
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: Text(isEdit ? 'Edit / Isi Hasil Ujian Organ' : 'Tambah Ujian Organ',
+              style: const TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold, fontSize: 16)),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _dialogField(namaUjianCtrl, 'Nama Ujian (mis. Ujian Organ A)', Icons.medical_services),
+                const SizedBox(height: 10),
+                _dialogField(organCtrl, 'Organ (opsional)', Icons.visibility),
+                const SizedBox(height: 10),
+                _dialogField(pengujiCtrl, 'Penguji', Icons.person_search),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    const Icon(Icons.calendar_today, size: 18, color: Colors.grey),
+                    const SizedBox(width: 8),
+                    Expanded(child: Text(tanggal == null ? 'Tanggal belum diisi' : _fmtDate(tanggal!.toIso8601String()))),
+                    TextButton(
+                      onPressed: () async {
+                        final picked = await showDatePicker(
+                          context: ctx,
+                          initialDate: tanggal ?? DateTime.now(),
+                          firstDate: DateTime(2000),
+                          lastDate: DateTime(2100),
+                        );
+                        if (picked != null) setDialogState(() => tanggal = picked);
+                      },
+                      child: const Text('Pilih Tanggal'),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                DropdownButtonFormField<String>(
+                  value: hasil,
+                  decoration: InputDecoration(
+                    labelText: 'Hasil',
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                  ),
+                  items: _organResultLabels.entries
+                      .map((e) => DropdownMenuItem(value: e.key, child: Text(e.value)))
+                      .toList(),
+                  onChanged: (v) => setDialogState(() => hasil = v ?? 'terjadwal'),
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: nilaiCtrl,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  decoration: InputDecoration(
+                    labelText: 'Nilai (opsional)',
+                    prefixIcon: const Icon(Icons.grade, size: 20),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                _dialogField(catatanCtrl, 'Catatan (opsional)', Icons.notes),
+                if (errorMsg.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  Text(errorMsg, style: const TextStyle(color: Colors.red, fontSize: 12)),
+                ],
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Batal')),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.teal, foregroundColor: Colors.white),
+              onPressed: isLoading
+                  ? null
+                  : () async {
+                      if (namaUjianCtrl.text.trim().isEmpty) {
+                        setDialogState(() => errorMsg = 'Nama ujian wajib diisi');
+                        return;
+                      }
+                      final nilaiText = nilaiCtrl.text.trim().replaceAll(',', '.');
+                      if (nilaiText.isNotEmpty && double.tryParse(nilaiText) == null) {
+                        setDialogState(() => errorMsg = 'Nilai harus berupa angka');
+                        return;
+                      }
+                      setDialogState(() {
+                        isLoading = true;
+                        errorMsg = '';
+                      });
+                      final data = <String, dynamic>{
+                        'nama_ujian': namaUjianCtrl.text.trim(),
+                        'organ': organCtrl.text.trim(),
+                        'penguji': pengujiCtrl.text.trim(),
+                        'hasil': hasil,
+                        'nilai': nilaiText.isEmpty ? null : double.parse(nilaiText),
+                        'catatan': catatanCtrl.text.trim(),
+                        if (tanggal != null) 'tanggal': tanggal!.toIso8601String(),
+                      };
+                      final ok = isEdit
+                          ? await _api.adminUpdateOrganExam(exam['id'], data)
+                          : await _api.adminAddOrganExam({'user_id': user['id'], ...data});
+                      if (ok) {
+                        if (ctx.mounted) Navigator.pop(ctx, true);
+                      } else {
+                        setDialogState(() {
+                          isLoading = false;
+                          errorMsg = 'Gagal menyimpan ujian organ';
+                        });
+                      }
+                    },
+              child: isLoading
+                  ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                  : const Text('Simpan'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (result == true && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Ujian organ tersimpan ✅')));
+    }
+    return result == true;
+  }
+}
 
 // ── Inline Rotation Edit Screen ───────────────────────────────────────────────
 

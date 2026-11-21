@@ -290,7 +290,7 @@ class _ExamsScreenState extends State<ExamsScreen> with SingleTickerProviderStat
 
   Widget _buildOrganExamCard(Map<String, dynamic> exam) {
     Color statusColor = Colors.grey;
-    String statusLabel = exam['status'] ?? 'terjadwal';
+    String statusLabel = (exam['hasil'] ?? 'terjadwal').toString();
     if (statusLabel == 'lulus') {
       statusColor = AppColors.successGreen;
       statusLabel = 'Lulus';
@@ -337,6 +337,12 @@ class _ExamsScreenState extends State<ExamsScreen> with SingleTickerProviderStat
                       style: TextStyle(fontFamily: 'Poppins', fontSize: 12, color: AppColors.textGrey)),
                   Text('Penguji: ${exam['penguji'] ?? '-'}',
                       style: TextStyle(fontFamily: 'Poppins', fontSize: 11, color: AppColors.textGrey)),
+                  if (exam['nilai'] != null)
+                    Text('Nilai: ${exam['nilai']}',
+                        style: const TextStyle(fontFamily: 'Poppins', fontSize: 12, fontWeight: FontWeight.w600)),
+                  if ((exam['catatan'] ?? '').toString().isNotEmpty)
+                    Text('Catatan: ${exam['catatan']}',
+                        style: TextStyle(fontFamily: 'Poppins', fontSize: 11, color: AppColors.textGrey)),
                   if (scheduledDate != null) ...[
                     const SizedBox(height: 4),
                     Row(

@@ -273,6 +273,7 @@ _jwt_secret_cache = None
 _ADDED_COLUMNS = {
     'prestasi': {'juara_ke': 'VARCHAR(50)', 'waktu_pelaksanaan': 'TIMESTAMP'},
     'pengabdian_masyarakat': {'peran': 'VARCHAR(200)'},
+    'penelitian': {'catatan_penilai': 'TEXT'},
 }
 _AUX_TABLES = (AppConfig.__table__, LoginThrottle.__table__)
 
@@ -1614,12 +1615,26 @@ def pen_dict(p, include_user=False):
         'notes': p.notes,
         'created_at': p.created_at.isoformat() if p.created_at else None,
         'updated_at': p.updated_at.isoformat() if p.updated_at else None,
+        'catatan_penilai': p.catatan_penilai,
+        'perlu_review': penelitian_perlu_review(p),
     }
     if include_user:
         u = p.user
         d['user_name'] = u.full_name if u else '-'
         d['user_nim'] = u.nim if u else '-'
     return d
+
+
+def penelitian_perlu_review(p):
+    """Menunggu keputusan penilai: baru diajukan, atau dokumen revisi untuk
+    ronde revisi yang sedang berjalan sudah diunggah PPDS."""
+    if p.status == 'submitted':
+        return True
+    if p.status == 'revisi_1':
+        return bool(p.dokumen_revisi1_url)
+    if p.status == 'revisi_2':
+        return bool(p.dokumen_revisi2_url)
+    return False
 
 
 def pen_public_dict(p):
@@ -1712,7 +1727,17 @@ def update_penelitian(pid):
         apply_fields(p, data, PENELITIAN_IDENTITY_FIELDS)
     elif any(field in data for field in PENELITIAN_IDENTITY_FIELDS):
         raise ApiError('Judul, jenis, dan pembimbing tidak bisa diubah setelah penelitian diajukan', 409)
+    was_waiting = penelitian_perlu_review(p)
     apply_fields(p, data, PENELITIAN_USER_FIELDS)
+    if p.status in ('revisi_1', 'revisi_2') and not was_waiting and penelitian_perlu_review(p):
+        ronde = '1' if p.status == 'revisi_1' else '2'
+        db.session.add(AdminNotification(
+            title=f'Revisi {ronde} Penelitian Diunggah',
+            message=f'{request.user.full_name} mengunggah revisi {ronde}: {p.judul}',
+            type='penelitian',
+            ref_id=p.id,
+            ref_type='penelitian',
+        ))
     db.session.commit()
     return jsonify(pen_dict(p))
 
@@ -1740,11 +1765,26 @@ def admin_update_penelitian_status(pid):
     if 'status' in data:
         if data['status'] not in PENELITIAN_STATUSES:
             raise ApiError('Status penelitian tidak valid')
-        p.status = data['status']
+        new_status = data['status']
+        # Meminta revisi = membuka ronde baru: slot dokumen revisi dikosongkan
+        # supaya penelitian keluar dari antrean review sampai PPDS mengunggah
+        # dokumen revisinya. Link dokumen lama disimpan di catatan revisi agar
+        # riwayatnya tidak hilang.
+        doc_field = {'revisi_1': 'dokumen_revisi1_url', 'revisi_2': 'dokumen_revisi2_url'}.get(new_status)
+        if doc_field and (new_status != p.status or penelitian_perlu_review(p)):
+            old_doc = getattr(p, doc_field)
+            if old_doc:
+                note_field = 'catatan_revisi1' if new_status == 'revisi_1' else 'catatan_revisi2'
+                history = f'[Dokumen revisi sebelumnya: {old_doc}]'
+                new_note = clean_text(data.get('catatan'), 'catatan', 5000) or getattr(p, note_field) or ''
+                combined = new_note + '\n' + history if new_note else history
+                data = dict(data, catatan=combined[-5000:])
+            setattr(p, doc_field, None)
+        p.status = new_status
     apply_fields(p, data, {
         'catatan_revisi1': txt(5000),
         'catatan_revisi2': txt(5000),
-        'notes': txt(5000),
+        'catatan_penilai': txt(5000),
     })
     # Aplikasi mengirim catatan penilai sebagai "catatan"; simpan ke kolom yang sesuai.
     catatan = clean_text(data.get('catatan'), 'catatan', 5000)
@@ -1754,7 +1794,7 @@ def admin_update_penelitian_status(pid):
         elif p.status == 'revisi_2':
             p.catatan_revisi2 = catatan
         else:
-            p.notes = catatan
+            p.catatan_penilai = catatan
     db.session.commit()
     return jsonify(pen_dict(p, include_user=True))
 
@@ -1933,11 +1973,20 @@ def organ_exam_dict(e):
     }
 
 
+ORGAN_EXAM_RESULTS = ('terjadwal', 'lulus', 'tidak_lulus')
+
+
+def _choice(value, field, choices):
+    if value not in choices:
+        raise ApiError(f"{field} harus salah satu dari: {', '.join(choices)}")
+    return value
+
+
 ORGAN_EXAM_FIELDS = {
     'nama_ujian': _required_text(200),
     'organ': txt(200),
     'penguji': txt(200),
-    'hasil': txt(32),
+    'hasil': lambda v, f: _choice(v, f, ORGAN_EXAM_RESULTS),
     'nilai': parse_float,
     'catatan': txt(5000),
     'tanggal': parse_dt,
@@ -1951,6 +2000,15 @@ def get_organ_exams():
     return jsonify([organ_exam_dict(e) for e in items])
 
 
+@app.route('/admin/organ-exams', methods=['GET'])
+@admin_required
+def admin_list_organ_exams():
+    user_id = parse_int(request.args.get('user_id'), 'user_id', minimum=1, allow_none=False)
+    get_or_404(User, user_id, 'User tidak ditemukan')
+    items = OrganExam.query.filter_by(user_id=user_id).order_by(OrganExam.created_at.asc()).all()
+    return jsonify([organ_exam_dict(e) for e in items])
+
+
 @app.route('/admin/organ-exams', methods=['POST'])
 @admin_required
 def admin_add_organ_exam():
@@ -1961,7 +2019,7 @@ def admin_add_organ_exam():
         organ=clean_text(data.get('organ'), 'organ', 200),
         penguji=clean_text(data.get('penguji'), 'penguji', 200),
         tanggal=parse_dt(data.get('tanggal'), 'tanggal'),
-        hasil=clean_text(data.get('hasil', 'terjadwal'), 'hasil', 32) or 'terjadwal',
+        hasil=_choice(data.get('hasil') or 'terjadwal', 'hasil', ORGAN_EXAM_RESULTS),
         nilai=parse_float(data.get('nilai'), 'nilai'),
         catatan=clean_text(data.get('catatan'), 'catatan', 5000),
     )

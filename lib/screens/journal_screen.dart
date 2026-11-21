@@ -266,7 +266,57 @@ class _JournalScreenState extends State<JournalScreen> with SingleTickerProvider
     );
   }
 
+  static const int _targetJournal = 5;
+
+  Widget _buildProgressHeader() {
+    final selesai = _myJournals
+        .where((j) => j['status'] == 'approved' && j['bukti_submitted'] == true)
+        .length;
+    final disetujui = _myJournals.where((j) => j['status'] == 'approved').length;
+    final tercapai = selesai >= _targetJournal;
+    return Card(
+      margin: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+      color: tercapai ? Colors.green.shade50 : Colors.orange.shade50,
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Journal Reading selesai: $selesai / $_targetJournal',
+                style: TextStyle(
+                    fontFamily: 'Poppins',
+                    fontWeight: FontWeight.bold,
+                    color: tercapai ? Colors.green.shade800 : Colors.orange.shade900)),
+            const SizedBox(height: 8),
+            LinearProgressIndicator(
+              value: (selesai / _targetJournal).clamp(0, 1).toDouble(),
+              minHeight: 6,
+              backgroundColor: Colors.white,
+              color: tercapai ? Colors.green : Colors.orange,
+            ),
+            const SizedBox(height: 6),
+            Text(
+                tercapai
+                    ? 'Target minimal $_targetJournal journal sudah tercapai.'
+                    : 'Dihitung selesai bila sudah disetujui dan bukti sudah diupload. '
+                        'Disetujui: $disetujui.',
+                style: const TextStyle(fontSize: 11, color: Colors.black54)),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildMyJournals() {
+    return Column(
+      children: [
+        _buildProgressHeader(),
+        Expanded(child: _buildMyJournalList()),
+      ],
+    );
+  }
+
+  Widget _buildMyJournalList() {
     if (_myJournals.isEmpty) {
       return const Center(
         child: Padding(
@@ -311,7 +361,17 @@ class _JournalScreenState extends State<JournalScreen> with SingleTickerProvider
                 ),
                 if (j['pembimbing'] != null && j['pembimbing'].toString().isNotEmpty) ...[
                   const SizedBox(height: 6),
-                  Text('Pembimbing: ', style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                  Text('Pembimbing: ${j['pembimbing']}', style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                ],
+                if ((j['catatan_admin'] ?? '').toString().isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(8),
+                    color: status == 'rejected' ? Colors.red.shade50 : Colors.blue.shade50,
+                    child: Text('Catatan penilai: ${j['catatan_admin']}',
+                        style: TextStyle(fontSize: 11, color: status == 'rejected' ? Colors.red.shade800 : Colors.blue.shade800)),
+                  ),
                 ],
                 if (isApproved) ...[
                   const SizedBox(height: 12),

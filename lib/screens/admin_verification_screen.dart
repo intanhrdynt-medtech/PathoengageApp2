@@ -47,7 +47,7 @@ class _AdminVerificationScreenState extends State<AdminVerificationScreen> {
     bool success = false;
     if (typeCategory == 'journal') {
       // Backend expects 'approve' or 'reject' as action
-      success = await _api.adminReviewJournal(id, action, 'Verifikasi dari Admin Dashboard');
+      success = await _api.adminReviewJournal(id, action, '');
     } else {
       success = await _api.verifyTask(typeCategory, id, action);
     }

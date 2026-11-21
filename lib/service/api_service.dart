@@ -577,6 +577,79 @@ class ApiService {
     return false;
   }
 
+  Future<List<dynamic>> adminGetOrganExams(int uid) async {
+    final token = await _getToken();
+    if (token == null) return [];
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/admin/organ-exams?user_id=$uid'),
+        headers: _buildHeaders(token),
+      );
+      if (response.statusCode == 200) return jsonDecode(response.body);
+    } catch (e) {
+      debugPrint('Error fetching organ exams: $e');
+    }
+    return [];
+  }
+
+  Future<bool> adminUpdateOrganExam(int id, Map<String, dynamic> data) async {
+    final token = await _getToken();
+    if (token == null) return false;
+    try {
+      final response = await http.patch(
+        Uri.parse('$baseUrl/admin/organ-exams/$id'),
+        headers: _buildHeaders(token),
+        body: jsonEncode(data),
+      );
+      return response.statusCode == 200;
+    } catch (e) {
+      debugPrint('Error updating organ exam: $e');
+    }
+    return false;
+  }
+
+  // --- SURVEY ---
+  Future<List<dynamic>> getActiveSurveys() async {
+    final token = await _getToken();
+    if (token == null) return [];
+    try {
+      final response = await http.get(Uri.parse('$baseUrl/surveys/active'), headers: _buildHeaders(token));
+      if (response.statusCode == 200) return jsonDecode(response.body);
+    } catch (e) {
+      debugPrint('Error fetching active surveys: $e');
+    }
+    return [];
+  }
+
+  Future<List<dynamic>> adminGetSurveys() async {
+    final token = await _getToken();
+    if (token == null) return [];
+    try {
+      final response = await http.get(Uri.parse('$baseUrl/admin/surveys'), headers: _buildHeaders(token));
+      if (response.statusCode == 200) return jsonDecode(response.body);
+    } catch (e) {
+      debugPrint('Error fetching surveys: $e');
+    }
+    return [];
+  }
+
+  /// Mengembalikan null bila sukses, atau pesan error dari server.
+  Future<String?> adminSaveSurvey(int? id, Map<String, dynamic> data) async {
+    final token = await _getToken();
+    if (token == null) return 'Sesi login habis';
+    try {
+      final response = id == null
+          ? await http.post(Uri.parse('$baseUrl/admin/surveys'), headers: _buildHeaders(token), body: jsonEncode(data))
+          : await http.patch(Uri.parse('$baseUrl/admin/surveys/$id'), headers: _buildHeaders(token), body: jsonEncode(data));
+      if (response.statusCode == 200 || response.statusCode == 201) return null;
+      final body = jsonDecode(response.body);
+      return (body is Map && body['error'] != null) ? body['error'].toString() : 'Gagal menyimpan survey';
+    } catch (e) {
+      debugPrint('Error saving survey: $e');
+      return 'Gagal menyimpan survey';
+    }
+  }
+
   Future<bool> adminUpdatePenelitianStatus(int pid, String status, String catatan) async {
     final token = await _getToken();
     if (token == null) return false;
