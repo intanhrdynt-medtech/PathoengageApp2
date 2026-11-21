@@ -287,7 +287,7 @@ class ApiService {
     final token = await _getToken();
     if (token == null) return [];
     try {
-      final response = await http.get(Uri.parse('$baseUrl/journal-readings/all?q=$query'), headers: _buildHeaders(token));
+      final response = await http.get(Uri.parse('$baseUrl/journal-readings/all?q=${Uri.encodeComponent(query)}'), headers: _buildHeaders(token));
       if (response.statusCode == 200) return jsonDecode(response.body);
     } catch (e) {
       debugPrint('Error fetching all journal readings: $e');
@@ -335,7 +335,7 @@ class ApiService {
     if (token == null) return [];
     try {
       final response = await http.get(
-          Uri.parse('$baseUrl/admin/journal-readings?status=$status'),
+          Uri.parse('$baseUrl/admin/journal-readings?status=${Uri.encodeComponent(status)}'),
           headers: _buildHeaders(token));
       if (response.statusCode == 200) return jsonDecode(response.body);
     } catch (e) {

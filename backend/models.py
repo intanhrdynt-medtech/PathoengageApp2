@@ -1,7 +1,12 @@
 from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy import event, DDL
 from datetime import datetime
 
 db = SQLAlchemy()
+
+# Cascade untuk data milik user: saat user dihapus, data turunannya ikut terhapus
+# (sebelumnya penghapusan user yang punya data selalu gagal karena user_id NOT NULL).
+_OWNED = dict(lazy=True, cascade='all, delete-orphan')
 
 
 class User(db.Model):
@@ -24,16 +29,16 @@ class User(db.Model):
     warning_active = db.Column(db.Boolean, default=False)
     warning_message = db.Column(db.Text, nullable=True)
 
-    reminders = db.relationship('Reminder', backref='user', lazy=True)
-    competency_logs = db.relationship('CompetencyLog', backref='user', lazy=True)
-    exams = db.relationship('Exam', backref='user', lazy=True)
-    academic_tasks = db.relationship('AcademicTask', backref='user', lazy=True)
-    external_rotations = db.relationship('ExternalRotation', backref='user', lazy=True)
-    journal_readings = db.relationship('JournalReadingSubmission', backref='user', lazy=True, foreign_keys='JournalReadingSubmission.user_id')
-    penelitians = db.relationship('Penelitian', backref='user', lazy=True)
-    pengabdians = db.relationship('PengabdianMasyarakat', backref='user', lazy=True)
-    prestasis = db.relationship('Prestasi', backref='user', lazy=True)
-    organ_exams = db.relationship('OrganExam', backref='user', lazy=True)
+    reminders = db.relationship('Reminder', backref='user', **_OWNED)
+    competency_logs = db.relationship('CompetencyLog', backref='user', **_OWNED)
+    exams = db.relationship('Exam', backref='user', **_OWNED)
+    academic_tasks = db.relationship('AcademicTask', backref='user', **_OWNED)
+    external_rotations = db.relationship('ExternalRotation', backref='user', **_OWNED)
+    journal_readings = db.relationship('JournalReadingSubmission', backref='user', foreign_keys='JournalReadingSubmission.user_id', **_OWNED)
+    penelitians = db.relationship('Penelitian', backref='user', **_OWNED)
+    pengabdians = db.relationship('PengabdianMasyarakat', backref='user', **_OWNED)
+    prestasis = db.relationship('Prestasi', backref='user', **_OWNED)
+    organ_exams = db.relationship('OrganExam', backref='user', **_OWNED)
 
 
 class CompetencyLog(db.Model):
@@ -169,6 +174,7 @@ class PengabdianMasyarakat(db.Model):
     lokasi = db.Column(db.String(300), nullable=True)
     deskripsi = db.Column(db.Text, nullable=True)
     bukti_url = db.Column(db.String(500), nullable=True)
+    peran = db.Column(db.String(200), nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
 
@@ -183,6 +189,8 @@ class Prestasi(db.Model):
     tahun = db.Column(db.Integer, nullable=True)
     deskripsi = db.Column(db.Text, nullable=True)
     sertifikat_url = db.Column(db.String(500), nullable=True)
+    juara_ke = db.Column(db.String(50), nullable=True)
+    waktu_pelaksanaan = db.Column(db.DateTime, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
 
@@ -226,4 +234,35 @@ class OrganExam(db.Model):
     nilai = db.Column(db.Float, nullable=True)
     catatan = db.Column(db.Text, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+
+# ── Internal: konfigurasi rahasia & pembatas percobaan login ─────────────────
+
+class AppConfig(db.Model):
+    """Key-value internal. Dipakai untuk menyimpan JWT secret yang dibuat
+    otomatis bila env SECRET_KEY tidak diset."""
+    __tablename__ = 'app_config'
+    key = db.Column(db.String(64), primary_key=True)
+    value = db.Column(db.Text, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+
+class LoginThrottle(db.Model):
+    """Penghitung login gagal per email / per IP untuk menahan brute force."""
+    __tablename__ = 'login_throttle'
+    key = db.Column(db.String(320), primary_key=True)
+    failures = db.Column(db.Integer, default=0, nullable=False)
+    window_start = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+
+
+# Setiap tabel yang dibuat lewat SQLAlchemy di Postgres (Supabase) langsung
+# diaktifkan Row Level Security-nya, supaya tidak bisa dibaca/ditulis lewat
+# REST API Supabase. Backend terhubung sebagai role `postgres` sehingga tidak
+# terpengaruh RLS.
+for _table in db.metadata.sorted_tables:
+    event.listen(
+        _table,
+        'after_create',
+        DDL('ALTER TABLE %(fullname)s ENABLE ROW LEVEL SECURITY').execute_if(dialect='postgresql'),
+    )
 

@@ -326,17 +326,22 @@ class _AcademicScreenState extends State<AcademicScreen> with SingleTickerProvid
                 setDlg(() => isSubmitting = true);
                 
                 bool successNotes = await _api.updateAcademicNotes(task['id'], 'pending_verification', _notesController.text.trim());
-                if (_urlController.text.trim().isNotEmpty) {
-                  await _api.updateAcademicEvidence(task['id'], 'pending_verification', _urlController.text.trim());
+                bool successUrl = true;
+                if (successNotes && _urlController.text.trim().isNotEmpty) {
+                  successUrl = await _api.updateAcademicEvidence(task['id'], 'pending_verification', _urlController.text.trim());
                 }
-                
+
                 setDlg(() => isSubmitting = false);
                 if (mounted) Navigator.pop(ctx);
-                
-                if (successNotes) {
+
+                if (successNotes && successUrl) {
                   ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Tugas berhasil disubmit/diubah!')));
-                  _loadTasks();
+                } else if (successNotes) {
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Resume tersimpan, tetapi link tidak valid. Gunakan link http:// atau https://')));
+                } else {
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Gagal menyimpan tugas. Coba lagi.')));
                 }
+                _loadTasks();
               },
               child: isSubmitting 
                   ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))

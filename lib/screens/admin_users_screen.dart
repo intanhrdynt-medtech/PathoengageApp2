@@ -484,8 +484,8 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
                         setDialogState(() => errorMsg = 'Semua field wajib diisi');
                         return;
                       }
-                      if (passCtrl.text.length < 6) {
-                        setDialogState(() => errorMsg = 'Password minimal 6 karakter');
+                      if (passCtrl.text.length < 8) {
+                        setDialogState(() => errorMsg = 'Password minimal 8 karakter');
                         return;
                       }
                       setDialogState(() {
@@ -614,8 +614,8 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
                         setDialogState(() => errorMsg = 'Semua field wajib diisi');
                         return;
                       }
-                      if (passCtrl.text.length < 6) {
-                        setDialogState(() => errorMsg = 'Password minimal 6 karakter');
+                      if (passCtrl.text.length < 8) {
+                        setDialogState(() => errorMsg = 'Password minimal 8 karakter');
                         return;
                       }
                       setDialogState(() {

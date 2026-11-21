@@ -194,8 +194,8 @@ class RegisterScreenState extends State<RegisterScreen> {
                                       icon: Icons.lock_outline,
                                       obscureText: _isPasswordObscure,
                                       onChanged: (val) => password = val,
-                                      validator: (val) => val!.length < 6
-                                          ? 'Password must be 6+ characters'
+                                      validator: (val) => val!.length < 8
+                                          ? 'Password must be 8+ characters'
                                           : null,
                                       suffixIcon: IconButton(
                                         icon: Icon(
